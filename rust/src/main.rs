@@ -220,11 +220,11 @@ fn main() {
 
   // Initializes the net
   let net = &mut Net::new(1 << 24);
-  net.boot(name_to_u32("ex3"));
+  net.boot(name_to_u32("ex2"));
 
   // Computes its normal form
   net.expand(book, Ptr::new(VRR,0));
-  net.normal(book);
+  net.normal(book, None);
 
   //Shows results and stats
   //println!("[net]\n{}", show_net(&net));

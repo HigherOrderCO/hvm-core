@@ -12,7 +12,9 @@
 // This expansion is performed on demand, and ERA-REF pointers are collected, allowing the runtime
 // to compute tail-recursive functions with constant memory usage.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Debug};
+
+use crate::readback_lnet;
 
 pub type Tag = u16;
 pub type Val = u32;
@@ -55,7 +57,7 @@ pub struct Node {
 // - used: total nodes currently allocated on the graph.
 // - rwts: total graph rewrites performed inside this net.
 // - next: next pointer to allocate memory (internal).
-#[derive(Debug)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Net {
   pub root: Ptr,
   pub acts: Vec<(Ptr, Ptr)>,
@@ -64,6 +66,12 @@ pub struct Net {
   pub rwts: usize,
       next: usize,
       locs: Vec<u32>,
+}
+
+impl Debug for Net {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+      Debug::fmt(&readback_lnet(self), f)
+    }
 }
 
 // A book is just a map of definitions, mapping ids to closed nets.
@@ -239,6 +247,7 @@ impl Net {
   // Allocates a consecutive chunk of 'size' nodes. Returns the index.
   #[inline(always)]
   pub fn alloc(&mut self) -> Val {
+    let starting_index = self.next;
     loop {
       if self.next >= self.node.len() {
         self.next = 0;
@@ -249,6 +258,7 @@ impl Net {
         return (self.next - 1) as Val;
       }
       self.next += 1;
+      debug_assert!(self.next != starting_index);
     }
   }
 
@@ -427,11 +437,12 @@ impl Net {
   }
 
   // Reduces all redexes until there is none.
-  pub fn normal(&mut self, book: &Book) {
+  pub fn normal(&mut self, book: &Book, max_step: Option<usize>) {
     self.expand(book, Ptr::new(VRR, 0));
-    while self.acts.len() > 0 {
-      while self.acts.len() > 0 {
-        println!(">> reduce {}", self.acts.len());
+    let max_step = max_step.unwrap_or(usize::MAX);
+    while self.acts.len() > 0 && self.rwts < max_step {
+      while self.acts.len() > 0 && self.rwts < max_step {
+        // println!(">> reduce {}", self.acts.len());
         self.reduce(book);
         //self.expand(book, Ptr::new(VRR, 0));
       }

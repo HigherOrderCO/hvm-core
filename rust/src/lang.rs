@@ -36,13 +36,14 @@
 
 use crate::core::*;
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::iter::Peekable;
 use std::str::Chars;
 
 // AST
 // ---
 
-#[derive(Debug)]
+#[derive(Clone)]
 pub enum LTree {
   Era,
   Nod { 
@@ -61,9 +62,34 @@ pub enum LTree {
   },
 }
 
+impl Debug for LTree {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Self::Era => write!(f, "Era"),
+      Self::Nod { tag, lft, rgt } => f
+        .debug_struct("Node")
+        .field(
+          "tag",
+          match *tag {
+            CON => &"CON",
+            DUP => &"DUP",
+            ERA => &"ERA",
+            _ => &"???",
+          },
+        )
+        .field("lft", lft)
+        .field("rgt", rgt)
+        .finish(),
+      Self::Var { nam } => write!(f, "\"{}\"", nam),
+      Self::Ref { nam } => f.debug_tuple("Ref").field(nam).finish(),
+      Self::NUM { val } => f.debug_tuple("NUM").field(val).finish(),
+    }
+  }
+}
+
 type LActs = Vec<(LTree,LTree)>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LNet {
   pub root: LTree,
   pub acts: LActs,
@@ -238,7 +264,7 @@ pub fn port_to_tag(port: Port) -> Tag {
   }
 }
 
-pub fn lnet_to_net(lnet: &LNet) -> Net {
+pub fn lnet_to_net(lnet: &LNet, padding_factor: usize) -> Net {
   let mut vars = HashMap::new();
   let mut net = Net::new(1 << 16);
   net.root = alloc_ltree(&mut net, &lnet.root, &mut vars, Parent::Root);
@@ -247,7 +273,7 @@ pub fn lnet_to_net(lnet: &LNet) -> Net {
     let ptr2 = alloc_ltree(&mut net, tree2, &mut vars, Parent::Acts);
     net.acts.push((ptr1, ptr2));
   }
-  net.node = net.node[0 .. net.used].to_vec();
+  net.node = net.node[0 .. net.used * padding_factor].to_vec();
   return net;
 }
 
@@ -444,6 +470,6 @@ pub fn readback_lnet(net: &Net) -> LNet {
 
 pub fn define(book: &mut Book, name: &str, code: &str) -> u32 {
   let id = name_to_u32(name);
-  book.def(id, lnet_to_net(&do_parse_lnet(code)));
+  book.def(id, lnet_to_net(&do_parse_lnet(code), 1));
   return id;
 }
