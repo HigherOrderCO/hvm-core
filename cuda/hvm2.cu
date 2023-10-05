@@ -116,7 +116,7 @@ typedef u32 Book; // stored in a flat buffer
 Book* init_book_on_gpu(u32* data, u32 size) {
   u32* gpu_book;
   cudaMalloc(&gpu_book, size * sizeof(u32));
-  cudaMemcpy(gpu_book, data, size * sizeof(u32), cudaMemcpyHostToDevice);
+  cudaMemcpyAsync(gpu_book, data, size * sizeof(u32), cudaMemcpyHostToDevice);
   cudaMemcpyToSymbol(BOOK, &gpu_book, sizeof(u32*));
   return gpu_book;
 }
@@ -1005,9 +1005,9 @@ __host__ Net* net_to_gpu(Net* host_net) {
   cudaMalloc((void**)&device_head, HEAD_SIZE * sizeof(Wire));
 
   // Copy the host data to the device memory
-  cudaMemcpy(device_bags, host_net->bags, BAGS_SIZE * sizeof(Wire), cudaMemcpyHostToDevice);
-  cudaMemcpy(device_node, host_net->node, NODE_SIZE * sizeof(Node), cudaMemcpyHostToDevice);
-  cudaMemcpy(device_head, host_net->head, HEAD_SIZE * sizeof(Wire), cudaMemcpyHostToDevice);
+  cudaMemcpyAsync(device_bags, host_net->bags, BAGS_SIZE * sizeof(Wire), cudaMemcpyHostToDevice);
+  cudaMemcpyAsync(device_node, host_net->node, NODE_SIZE * sizeof(Node), cudaMemcpyHostToDevice);
+  cudaMemcpyAsync(device_head, host_net->head, HEAD_SIZE * sizeof(Wire), cudaMemcpyHostToDevice);
 
   // Create a temporary host Net object with device pointers
   Net temp_net  = *host_net;
@@ -1016,7 +1016,7 @@ __host__ Net* net_to_gpu(Net* host_net) {
   temp_net.head = device_head;
 
   // Copy the temporary host Net object to the device memory
-  cudaMemcpy(device_net, &temp_net, sizeof(Net), cudaMemcpyHostToDevice);
+  cudaMemcpyAsync(device_net, &temp_net, sizeof(Net), cudaMemcpyHostToDevice);
 
   // Return the device pointer to the created Net object
   return device_net;
@@ -1027,7 +1027,7 @@ __host__ Net* net_to_cpu(Net* device_net) {
   Net* host_net = (Net*)malloc(sizeof(Net));
 
   // Copy the device Net object to the host memory
-  cudaMemcpy(host_net, device_net, sizeof(Net), cudaMemcpyDeviceToHost);
+  cudaMemcpyAsync(host_net, device_net, sizeof(Net), cudaMemcpyDeviceToHost);
 
   // Allocate host memory for data
   host_net->bags = (Wire*)malloc(BAGS_SIZE * sizeof(Wire));
@@ -1038,14 +1038,14 @@ __host__ Net* net_to_cpu(Net* device_net) {
   Wire* device_bags;
   Node* device_node;
   Ptr*  device_head;
-  cudaMemcpy(&device_bags, &(device_net->bags), sizeof(Wire*), cudaMemcpyDeviceToHost);
-  cudaMemcpy(&device_node, &(device_net->node), sizeof(Node*), cudaMemcpyDeviceToHost);
-  cudaMemcpy(&device_head, &(device_net->head), sizeof(Wire*), cudaMemcpyDeviceToHost);
+  cudaMemcpyAsync(&device_bags, &(device_net->bags), sizeof(Wire*), cudaMemcpyDeviceToHost);
+  cudaMemcpyAsync(&device_node, &(device_net->node), sizeof(Node*), cudaMemcpyDeviceToHost);
+  cudaMemcpyAsync(&device_head, &(device_net->head), sizeof(Wire*), cudaMemcpyDeviceToHost);
 
   // Copy the device data to the host memory
-  cudaMemcpy(host_net->bags, device_bags, BAGS_SIZE * sizeof(Wire), cudaMemcpyDeviceToHost);
-  cudaMemcpy(host_net->node, device_node, NODE_SIZE * sizeof(Node), cudaMemcpyDeviceToHost);
-  cudaMemcpy(host_net->head, device_head, HEAD_SIZE * sizeof(Wire), cudaMemcpyDeviceToHost);
+  cudaMemcpyAsync(host_net->bags, device_bags, BAGS_SIZE * sizeof(Wire), cudaMemcpyDeviceToHost);
+  cudaMemcpyAsync(host_net->node, device_node, NODE_SIZE * sizeof(Node), cudaMemcpyDeviceToHost);
+  cudaMemcpyAsync(host_net->head, device_head, HEAD_SIZE * sizeof(Wire), cudaMemcpyDeviceToHost);
 
   return host_net;
 }
@@ -1055,9 +1055,9 @@ __host__ void net_free_on_gpu(Net* device_net) {
   Wire* device_bags;
   Node* device_node;
   Wire* device_head;
-  cudaMemcpy(&device_bags, &(device_net->bags), sizeof(Wire*), cudaMemcpyDeviceToHost);
-  cudaMemcpy(&device_node, &(device_net->node), sizeof(Node*), cudaMemcpyDeviceToHost);
-  cudaMemcpy(&device_head, &(device_net->head), sizeof(Wire*), cudaMemcpyDeviceToHost);
+  cudaMemcpyAsync(&device_bags, &(device_net->bags), sizeof(Wire*), cudaMemcpyDeviceToHost);
+  cudaMemcpyAsync(&device_node, &(device_net->node), sizeof(Node*), cudaMemcpyDeviceToHost);
+  cudaMemcpyAsync(&device_head, &(device_net->head), sizeof(Wire*), cudaMemcpyDeviceToHost);
 
   // Free the device memory
   cudaFree(device_bags);
