@@ -61,7 +61,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 // Load file and generate net
 fn load(file: &str) -> (run::Book, run::Net) {
   let file = fs::read_to_string(file).unwrap();
-  let book = ast::book_to_runtime(&ast::do_parse_book(&file));
+  let book = &ast::do_parse_book(&file);
+  let book = ast::book_to_runtime(book);
   let mut net = run::Net::new(1 << 28);
   net.boot(ast::name_to_val("main"));
   return (book, net);
@@ -74,7 +75,7 @@ pub fn gen_cuda_book(book: &run::Book) -> String {
   // Sort the book.defs by key
   let mut defs = BTreeMap::new();
   for i in 0 .. book.defs.len() {
-    if book.defs[i].node.len() > 0 {
+    if book.defs[i].port.len() > 0 {
       defs.insert(i as u32, book.defs[i].clone());
     }
   }
@@ -93,7 +94,7 @@ pub fn gen_cuda_book(book: &run::Book) -> String {
 
   // Generate book data
   for (i, (id, net)) in defs.iter().enumerate() {
-    let node_len = net.node.len();
+    let node_len = net.port.len();
     let rdex_len = net.rdex.len();
 
     code.push_str(&format!("  // @{}\n", crate::ast::val_to_name(*id)));
@@ -106,9 +107,9 @@ pub fn gen_cuda_book(book: &run::Book) -> String {
 
     // .node
     code.push_str("  // .node\n");
-    for (i, node) in net.node.iter().enumerate() {
-      code.push_str(&format!("  0x{:08X},", node.0.data()));
-      code.push_str(&format!(" 0x{:08X},", node.1.data()));
+    for (i, node) in net.port.iter().enumerate() {
+      code.push_str(&format!("  0x{:08X},", node.data()));
+      code.push_str(&format!(" 0x{:08X},", node.data()));
       if (i + 1) % 4 == 0 {
         code.push_str("\n");
       }
@@ -138,7 +139,7 @@ pub fn gen_cuda_book(book: &run::Book) -> String {
   let mut index = 0;
   for (i, id) in defs.keys().enumerate() {
     code.push_str(&format!("  0x{:08X}, 0x{:08X}, // @{}\n", id, index, crate::ast::val_to_name(*id)));
-    index += 2 + 2 * defs[id].node.len() as u32 + 2 * defs[id].rdex.len() as u32;
+    index += 2 + 2 * defs[id].port.len() as u32 + 2 * defs[id].rdex.len() as u32;
   }
 
   code.push_str("};");

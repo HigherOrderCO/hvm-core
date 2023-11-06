@@ -25,8 +25,8 @@
 @c22a = ([[[[[[[[[[[[[[[[[[[[[(v u) (u t)] (t s)] (s r)] (r q)] (q p)] (p o)] (o n)] (n m)] (m l)] (l k)] (k j)] (j i)] (i h)] (h g)] (g f)] (f e)] (e d)] (d c)] (c b)] (b a)] (a R)] (v R))
 @c23a = ([[[[[[[[[[[[[[[[[[[[[[(w v) (v u)] (u t)] (t s)] (s r)] (r q)] (q p)] (p o)] (o n)] (n m)] (m l)] (l k)] (k j)] (j i)] (i h)] (h g)] (g f)] (f e)] (e d)] (d c)] (c b)] (b a)] (a R)] (w R))
 @c24a = ([[[[[[[[[[[[[[[[[[[[[[[(x w) (w v)] (v u)] (u t)] (t s)] (s r)] (r q)] (q p)] (p o)] (o n)] (n m)] (m l)] (l k)] (k j)] (j i)] (i h)] (h g)] (g f)] (f e)] (e d)] (d c)] (c b)] (b a)] (a R)] (x R))
-@c25a = ([[[[[[[[[[[[[[[[[[[[[[[[(y x) (x w)] (w v)] (v u)] (u t)] (t s)] (s r)] (r q)] (q p)] (p o)] (o n)] (n m)] (m l)] (l k)] (k j)] (j i)] (i h)] (h g)] (g f)] (f e)] (e d)] (d c)] (c b)] (b a)] (a R)] (x R))
-@c26a = ([[[[[[[[[[[[[[[[[[[[[[[[[(z y) (y x)] (x w)] (w v)] (v u)] (u t)] (t s)] (s r)] (r q)] (q p)] (p o)] (o n)] (n m)] (m l)] (l k)] (k j)] (j i)] (i h)] (h g)] (g f)] (f e)] (e d)] (d c)] (c b)] (b a)] (a R)] (x R))
+@c25a = ([[[[[[[[[[[[[[[[[[[[[[[[(y x) (x w)] (w v)] (v u)] (u t)] (t s)] (s r)] (r q)] (q p)] (p o)] (o n)] (n m)] (m l)] (l k)] (k j)] (j i)] (i h)] (h g)] (g f)] (f e)] (e d)] (d c)] (c b)] (b a)] (a R)] (y R))
+@c26a = ([[[[[[[[[[[[[[[[[[[[[[[[[(z y) (y x)] (x w)] (w v)] (v u)] (u t)] (t s)] (s r)] (r q)] (q p)] (p o)] (o n)] (n m)] (m l)] (l k)] (k j)] (j i)] (i h)] (h g)] (g f)] (f e)] (e d)] (d c)] (c b)] (b a)] (a R)] (z R))
 
 @c0b = (* (a a))
 @c1b = ((a R) (a R))
@@ -53,8 +53,8 @@
 @c22b = ({2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 (v u) (u t)} (t s)} (s r)} (r q)} (q p)} (p o)} (o n)} (n m)} (m l)} (l k)} (k j)} (j i)} (i h)} (h g)} (g f)} (f e)} (e d)} (d c)} (c b)} (b a)} (a R)} (v R))
 @c23b = ({2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 (w v) (v u)} (u t)} (t s)} (s r)} (r q)} (q p)} (p o)} (o n)} (n m)} (m l)} (l k)} (k j)} (j i)} (i h)} (h g)} (g f)} (f e)} (e d)} (d c)} (c b)} (b a)} (a R)} (w R))
 @c24b = ({2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 (x w) (w v)} (v u)} (u t)} (t s)} (s r)} (r q)} (q p)} (p o)} (o n)} (n m)} (m l)} (l k)} (k j)} (j i)} (i h)} (h g)} (g f)} (f e)} (e d)} (d c)} (c b)} (b a)} (a R)} (x R))
-@c25b = ({2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 (y x) (x w)} (w v)} (v u)} (u t)} (t s)} (s r)} (r q)} (q p)} (p o)} (o n)} (n m)} (m l)} (l k)} (k j)} (j i)} (i h)} (h g)} (g f)} (f e)} (e d)} (d c)} (c b)} (b a)} (a R)} (x R))
-@c26b = ({2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 (z y) (y x)} (x w)} (w v)} (v u)} (u t)} (t s)} (s r)} (r q)} (q p)} (p o)} (o n)} (n m)} (m l)} (l k)} (k j)} (j i)} (i h)} (h g)} (g f)} (f e)} (e d)} (d c)} (c b)} (b a)} (a R)} (x R))
+@c25b = ({2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 (y x) (x w)} (w v)} (v u)} (u t)} (t s)} (s r)} (r q)} (q p)} (p o)} (o n)} (n m)} (m l)} (l k)} (k j)} (j i)} (i h)} (h g)} (g f)} (f e)} (e d)} (d c)} (c b)} (b a)} (a R)} (y R))
+@c26b = ({2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 {2 (z y) (y x)} (x w)} (w v)} (v u)} (u t)} (t s)} (s r)} (r q)} (q p)} (p o)} (o n)} (n m)} (m l)} (l k)} (k j)} (j i)} (i h)} (h g)} (g f)} (f e)} (e d)} (d c)} (c b)} (b a)} (a R)} (z R))
 
 
 @main

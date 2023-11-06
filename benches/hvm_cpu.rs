@@ -124,7 +124,7 @@ fn interact_benchmark(c: &mut Criterion) {
   ];
 
   for (name, redex) in cases {
-    let mut net = run::Net::new(10);
+    let mut net = run::Net::new(20);
     let book = run::Book::new();
     ast::net_to_runtime(&mut net, &ast::Net { root: Era, rdex: vec![redex] });
     let (rdx_a, rdx_b) = net.rdex[0];

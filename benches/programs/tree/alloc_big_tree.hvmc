@@ -26,8 +26,8 @@
 @c22 = ([[[[[[[[[[[[[[[[[[[[[(v u) (u t)] (t s)] (s r)] (r q)] (q p)] (p o)] (o n)] (n m)] (m l)] (l k)] (k j)] (j i)] (i h)] (h g)] (g f)] (f e)] (e d)] (d c)] (c b)] (b a)] (a R)] (v R))
 @c23 = ([[[[[[[[[[[[[[[[[[[[[[(w v) (v u)] (u t)] (t s)] (s r)] (r q)] (q p)] (p o)] (o n)] (n m)] (m l)] (l k)] (k j)] (j i)] (i h)] (h g)] (g f)] (f e)] (e d)] (d c)] (c b)] (b a)] (a R)] (w R))
 @c24 = ([[[[[[[[[[[[[[[[[[[[[[[(x w) (w v)] (v u)] (u t)] (t s)] (s r)] (r q)] (q p)] (p o)] (o n)] (n m)] (m l)] (l k)] (k j)] (j i)] (i h)] (h g)] (g f)] (f e)] (e d)] (d c)] (c b)] (b a)] (a R)] (x R))
-@c25 = ([[[[[[[[[[[[[[[[[[[[[[[[(y x) (x w)] (w v)] (v u)] (u t)] (t s)] (s r)] (r q)] (q p)] (p o)] (o n)] (n m)] (m l)] (l k)] (k j)] (j i)] (i h)] (h g)] (g f)] (f e)] (e d)] (d c)] (c b)] (b a)] (a R)] (x R))
-@c26 = ([[[[[[[[[[[[[[[[[[[[[[[[[(z y) (y x)] (x w)] (w v)] (v u)] (u t)] (t s)] (s r)] (r q)] (q p)] (p o)] (o n)] (n m)] (m l)] (l k)] (k j)] (j i)] (i h)] (h g)] (g f)] (f e)] (e d)] (d c)] (c b)] (b a)] (a R)] (x R))
+@c25 = ([[[[[[[[[[[[[[[[[[[[[[[[(y x) (x w)] (w v)] (v u)] (u t)] (t s)] (s r)] (r q)] (q p)] (p o)] (o n)] (n m)] (m l)] (l k)] (k j)] (j i)] (i h)] (h g)] (g f)] (f e)] (e d)] (d c)] (c b)] (b a)] (a R)] (y R))
+@c26 = ([[[[[[[[[[[[[[[[[[[[[[[[[(z y) (y x)] (x w)] (w v)] (v u)] (u t)] (t s)] (s r)] (r q)] (q p)] (p o)] (o n)] (n m)] (m l)] (l k)] (k j)] (j i)] (i h)] (h g)] (g f)] (f e)] (e d)] (d c)] (c b)] (b a)] (a R)] (z R))
 
 @g_s = ({2 r0 r1} ((r0 (r1 r)) r))
 @g_z = (x x)
