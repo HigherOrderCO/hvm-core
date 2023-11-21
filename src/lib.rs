@@ -5,9 +5,8 @@
 #![allow(non_upper_case_globals)]
 
 pub mod ast;
+pub mod codegen;
 pub mod fns;
-pub mod jit;
+pub mod ir;
+pub mod quoting;
 pub mod run;
-
-#[cfg(feature = "cuda")]
-pub mod cuda;

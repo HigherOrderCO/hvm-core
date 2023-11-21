@@ -8,9 +8,8 @@ use std::env;
 use std::fs;
 
 use hvmc::ast;
-use hvmc::fns;
-use hvmc::jit;
 use hvmc::run;
+use quote::ToTokens;
 
 #[cfg(not(feature = "hvm_cli_options"))]
 fn main() {
@@ -91,14 +90,15 @@ fn print_stats(net: &run::Net, start_time: std::time::Instant) {
 // Load file and generate net
 fn load(file: &str) -> (run::Book, run::Net) {
   let file = fs::read_to_string(file).unwrap();
-  let book = ast::book_to_runtime(&ast::do_parse_book(&file));
+  let book = ast::book_to_runtime(&ast::do_parse_book(&file), run::call_native());
   let mut net = run::Net::new(1 << 28);
   net.boot(ast::name_to_val("main"));
   return (book, net);
 }
 
 pub fn compile_book_to_rust_crate(f_name: &str, book: &run::Book) -> Result<(), std::io::Error> {
-  let fns_rs = jit::compile_book(book);
+  use rust_format::Formatter;
+  let fns_rs = hvmc::codegen::compile_book(book).into_token_stream();
   let outdir = ".hvm";
   if std::path::Path::new(&outdir).exists() {
     fs::remove_dir_all(&outdir)?;
@@ -109,11 +109,14 @@ pub fn compile_book_to_rust_crate(f_name: &str, book: &run::Book) -> Result<(), 
   fs::create_dir_all(&format!("{}/src", outdir))?;
   fs::write(".hvm/Cargo.toml", cargo_toml)?;
   fs::write(".hvm/src/ast.rs", include_str!("../src/ast.rs"))?;
-  fs::write(".hvm/src/jit.rs", include_str!("../src/jit.rs"))?;
   fs::write(".hvm/src/lib.rs", include_str!("../src/lib.rs"))?;
   fs::write(".hvm/src/main.rs", include_str!("../src/main.rs"))?;
   fs::write(".hvm/src/run.rs", include_str!("../src/run.rs"))?;
-  fs::write(".hvm/src/fns.rs", fns_rs)?;
+  fs::write(".hvm/src/ir.rs", include_str!("../src/ir.rs"))?;
+  fs::write(".hvm/src/codegen.rs", include_str!("../src/codegen.rs"))?;
+  fs::write(".hvm/src/quoting.rs", include_str!("../src/quoting.rs"))?;
+  // fs::write(".hvm/src/fns.rs", fns_rs.to_string())?;
+  fs::write(".hvm/src/fns.rs", rust_format::RustFmt::new().format_str(fns_rs.to_string()).unwrap())?;
   return Ok(());
 }
 

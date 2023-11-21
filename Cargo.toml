@@ -25,6 +25,11 @@ panic = "abort"
 default = ["hvm_cli_options"]
 hvm_cli_options = []
 
+[dependencies]
+proc-macro2 = "1.0.69"
+quote = "1.0.33"
+rust-format = "0.3.4"
+
 ##--COMPILER-CUTOFF--##
 
 # Benchmark dependencies

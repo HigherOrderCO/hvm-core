@@ -365,6 +365,9 @@ dependencies = [
  "criterion",
  "hvm-lang",
  "insta",
+ "proc-macro2",
+ "quote",
+ "rust-format",
 ]
 
 [[package]]
@@ -664,6 +667,12 @@ name = "regex-syntax"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08c74e62047bb2de4ff487b251e4a92e24f48745648451635cec7d591162d9f"
+
+[[package]]
+name = "rust-format"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "60e7c00b6c3bf5e38a880eec01d7e829d12ca682079f8238a464def3c4b31627"
 
 [[package]]
 name = "rustix"

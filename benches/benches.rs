@@ -13,7 +13,7 @@ fn load_from_core<P: AsRef<Path>>(file: P) -> (run::Book, run::Net) {
   let (size, code) = extract_size(&code);
 
   let book = ast::do_parse_book(code);
-  let rbook = ast::book_to_runtime(&book);
+  let rbook = ast::book_to_runtime(&book, run::call_native());
 
   let mut net = run::Net::new(size);
   net.boot(name_to_val("main"));
@@ -27,7 +27,7 @@ fn load_from_lang<P: AsRef<Path>>(file: P) -> (run::Book, run::Net) {
 
   let mut book = hvm_lang::term::parser::parse_definition_book(&code).unwrap();
   let (book, _) = hvm_lang::compile_book(&mut book).unwrap();
-  let book = ast::book_to_runtime(&book);
+  let book = ast::book_to_runtime(&book, run::call_native());
 
   let mut net = run::Net::new(size);
   net.boot(name_to_val("main"));

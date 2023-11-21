@@ -7,6 +7,7 @@
 // they interact with nodes, and are cleared when they interact with ERAs, allowing for constant
 // space evaluation of recursive functions on Scott encoded datatypes.
 
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 pub type Tag  = u8;
@@ -89,9 +90,16 @@ pub struct Def {
   pub node: Vec<(Ptr, Ptr)>,
 }
 
+pub type CallNative = Arc<dyn Fn(&Net, &Book, Ptr, Ptr) -> bool>;
+
 // A map of id to definitions (closed nets).
 pub struct Book {
   pub defs: Vec<Def>,
+  pub call_native: CallNative,
+}
+
+pub fn call_native() -> CallNative {
+  Arc::new(|_, _, _, _| false)
 }
 
 impl Ptr {
@@ -212,6 +220,7 @@ impl Book {
   pub fn new() -> Self {
     Book {
       defs: vec![Def::new(); 1 << 24],
+      call_native: call_native(),
     }
   }
 

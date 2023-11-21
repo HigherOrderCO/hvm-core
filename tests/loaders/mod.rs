@@ -61,7 +61,7 @@ pub fn normal(book: Book, size: usize) -> (run::Net, Net) {
     host_net.to_runtime_net()
   }
 
-  let book = book_to_runtime(&book);
+  let book = book_to_runtime(&book, run::call_native());
 
   let rnet = {
     #[cfg(not(feature = "cuda"))]
