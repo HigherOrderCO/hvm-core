@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::iter::Peekable;
 use std::str::Chars;
+use std::sync::Arc;
 
 // AST
 // ---
@@ -462,8 +463,9 @@ pub fn net_to_runtime(rt_net: &mut run::Net, net: &Net) {
   }
 }
 
-pub fn book_to_runtime(book: &Book) -> run::Book {
+pub fn book_to_runtime(book: &Book, call_native: run::CallNative) -> run::Book {
   let mut rt_book = run::Book::new();
+  rt_book.call_native = call_native;
   for (name, net) in book {
     let id = name_to_val(name);
     let mut rt = run::Net::new(1 << 18);

@@ -8,6 +8,4 @@ pub mod ast;
 pub mod fns;
 pub mod jit;
 pub mod run;
-
-#[cfg(feature = "cuda")]
-pub mod cuda;
+pub mod exe;

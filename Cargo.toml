@@ -23,7 +23,16 @@ panic = "abort"
 
 [features]
 default = ["hvm_cli_options"]
-hvm_cli_options = []
+hvm_cli_options = ["dep:proc-macro2", "dep:quote", "dep:rust-format"]
+
+[dependencies]
+proc-macro2 = {optional = true, version = "1.0.69"}
+quote = {optional = true, version = "1.0.33"}
+rust-format = {optional = true, version = "0.3.4"}
+cranelift = "0.101.4"
+cranelift-jit = "0.101.4"
+cranelift-module = "0.101.4"
+cranelift-native = "0.101.4"
 
 ##--COMPILER-CUTOFF--##
 
