@@ -13,7 +13,7 @@ gen = λn match n {
 // rev : Arr -> Arr
 rev = λa
   let a_empty  = Empty
-  let a_single = λx (Single x)
+  let a_single = Single
   let a_concat = λx0 λx1 (Concat (rev x1) (rev x0))
   (a a_empty a_single a_concat)
 
@@ -32,33 +32,29 @@ to_arr = λa
   let a_free = λk Empty
   let a_used = λk (Single k)
   let a_node = λx0 λx1 λk
-    let x0 = (to_arr x0 (+ (* k 2) 0))
-    let x1 = (to_arr x1 (+ (* k 2) 1))
-    (Concat x0 x1)
+    let k0 = (<< k 1)
+    let k1 = (| k0 1)
+    (Concat (to_arr x0 k0) (to_arr x1 k1))
   (a a_free a_used a_node)
 
 // to_map : Arr -> Map
 to_map = λa
   let a_empty  = Free
-  let a_single = λx (radix x)
+  let a_single = radix
   let a_concat = λx0 λx1 (merge (to_map x0) (to_map x1))
   (a a_empty a_single a_concat)
 
 // merge : Map -> Map -> Map
 merge = λa
-  let a_free = λb
-    let b_free = Free
-    let b_used = Used
-    let b_node = λb0 λb1 (Node b0 b1)
-    (b b_free b_used b_node)
+  let a_free = λb b
   let a_used = λb
     let b_free = Used
     let b_used = Used
-    let b_node = λb0 λb1 0
+    let b_node = λb0 λb1 0 // unreachable
     (b b_free b_used b_node)
   let a_node = λa0 λa1 λb
-    let b_free = λa0 λa1 (Node a0 a1)
-    let b_used = λa0 λa1 0
+    let b_free = Node
+    let b_used = λa0 λa1 0 // unreachable
     let b_node = λb0 λb1 λa0 λa1 (Node (merge a0 b0) (merge a1 b1))
     (b b_free b_used b_node a0 a1)
   (a a_free a_used a_node)
