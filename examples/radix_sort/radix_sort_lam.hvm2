@@ -3,7 +3,7 @@ data Map = Free | Used | (Node x0 x1)
 
 // gen : u32 -> Arr
 gen = λn match n {
-  0: λx (Single x)
+  0: Single
   1+p: λx
     let x0 = (<< x 1)
     let x1 = (| x0 1)
@@ -30,7 +30,7 @@ sort = λt (to_arr (to_map t) 0)
 // to_arr : Map -> u32 -> Arr
 to_arr = λa
   let a_free = λk Empty
-  let a_used = λk (Single k)
+  let a_used = Single
   let a_node = λx0 λx1 λk
     let k0 = (<< k 1)
     let k1 = (| k0 1)
@@ -50,11 +50,11 @@ merge = λa
   let a_used = λb
     let b_free = Used
     let b_used = Used
-    let b_node = λb0 λb1 0 // unreachable
+    let b_node = 0 // unreachable
     (b b_free b_used b_node)
   let a_node = λa0 λa1 λb
     let b_free = Node
-    let b_used = λa0 λa1 0 // unreachable
+    let b_used = 0 // unreachable
     let b_node = λb0 λb1 λa0 λa1 (Node (merge a0 b0) (merge a1 b1))
     (b b_free b_used b_node a0 a1)
   (a a_free a_used a_node)
@@ -90,9 +90,9 @@ radix = λn
 
 // swap : u32 -> Arr -> Arr -> Arr
 swap = λn match n {
-  0:   λx0 λx1 (Concat x0 x1)
+  0:   Concat
   1+p: λx0 λx1 (Concat x1 x0)
 }
 
 // main : u32
-main = (sum (sort (rev (gen 20 0))))
+main = (sum (sort (rev (gen 22 0))))
