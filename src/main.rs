@@ -4,16 +4,17 @@
 #![allow(unused_imports)]
 #![allow(unused_variables)]
 
+use std::collections::HashSet;
 use std::env;
 use std::fs;
+use std::sync::Arc;
+use std::sync::atomic::AtomicIsize;
 
 use hvmc::ast;
 use hvmc::fns;
 use hvmc::jit;
 use hvmc::run;
 use hvmc::u60;
-
-use std::collections::HashSet;
 
 #[cfg(not(feature = "hvm_cli_options"))]
 fn main() {
@@ -35,7 +36,7 @@ fn main() {
 
 #[cfg(feature = "hvm_cli_options")]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-  let data = run::Heap::init(1 << 28);
+  let data = run::Heap::init(1 << 29);
   let args: Vec<String> = env::args().collect();
   let help = "help".to_string();
   let opts = args.iter().skip(3).map(|s| s.as_str()).collect::<HashSet<_>>();
@@ -45,15 +46,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     "run" => {
       if let Some(file_name) = f_name {
         let (book, mut net) = load(&data, file_name);
-        let start_time = std::time::Instant::now();
-        if opts.contains("-1") {
-          net.normal(&book);
+        let elapsed = if opts.contains("-1") {
+          net.normal(&book)
         } else {
-          net.parallel_normal(&book);
-        }
+          net.parallel_normal(&book)
+        };
         println!("{}", ast::show_runtime_net(&net));
         if opts.contains("-s") {
-          print_stats(&net, start_time);
+          print_stats(&net, elapsed);
         }
       } else {
         println!("Usage: hvmc run <file.hvmc> [-s]");
@@ -93,23 +93,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   Ok(())
 }
 
-fn print_stats(net: &run::Net, start_time: std::time::Instant) {
+fn print_stats(net: &run::Net, elapsed: std::time::Duration) {
   println!("RWTS   : {}", net.rewrites());
   println!("- ANNI : {}", net.rwts.anni);
   println!("- COMM : {}", net.rwts.comm);
   println!("- ERAS : {}", net.rwts.eras);
   println!("- DREF : {}", net.rwts.dref);
   println!("- OPER : {}", net.rwts.oper);
-  println!("TIME   : {:.3} s", (start_time.elapsed().as_millis() as f64) / 1000.0);
-  println!("RPS    : {:.3} m", (net.rewrites() as f64) / (start_time.elapsed().as_millis() as f64) / 1000.0);
+  println!("TIME   : {:.3} s", (elapsed.as_millis() as f64) / 1000.0);
+  println!("RPS    : {:.3} m", (net.rewrites() as f64) / (elapsed.as_millis() as f64) / 1000.0);
 }
 
 // Load file and generate net
 fn load<'a>(data: &'a run::Data, file: &str) -> (run::Book, run::Net<'a>) {
-    let Ok(file) = fs::read_to_string(file) else {
-        eprintln!("Input file not found");
-        std::process::exit(1);
-    };
+  let Ok(file) = fs::read_to_string(file) else {
+      eprintln!("Input file not found");
+      std::process::exit(1);
+  };
   let book = ast::book_to_runtime(&ast::do_parse_book(&file));
   let mut net = run::Net::new(&data);
   net.boot(ast::name_to_val("main"));
@@ -143,7 +143,11 @@ pub fn compile_rust_crate_to_executable(f_name: &str) -> Result<(), std::io::Err
   if std::path::Path::new(&target).exists() {
     fs::remove_file(&target)?;
   }
+  // TODO: Read executable path from cargo json output
+  #[cfg(not(target_os = "windows"))]
   fs::copy("./.hvm/target/release/hvmc", target)?;
+  #[cfg(target_os = "windows")]
+  fs::copy("./.hvm/target/release/hvmc.exe", target + ".exe")?;
   return Ok(());
 }
 
@@ -225,4 +229,3 @@ pub fn gen_cuda_book(book: &run::Book) -> String {
 
   return code;
 }
-

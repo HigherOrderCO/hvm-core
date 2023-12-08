@@ -7,10 +7,16 @@
 // they interact with nodes, and are cleared when they interact with ERAs, allowing for constant
 // space evaluation of recursive functions on Scott encoded datatypes.
 
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-use std::sync::{Arc, Barrier};
+use st3::{lifo::{Stealer, Worker}, StealError};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering, AtomicBool, AtomicIsize};
+use std::sync::{Arc, Barrier};
+use std::thread;
 use crate::u60;
+
+pub const WORKER_QUEUE_CAPACITY : usize = 1 << 22;
+
+type Redex = (Ptr, Ptr);
 
 pub type Tag  = u8;
 pub type Lab  = u32;
@@ -115,7 +121,7 @@ pub struct Net<'a> {
   pub tid : usize, // thread id
   pub tids: usize, // thread count
   pub heap: Heap<'a>, // nodes
-  pub rdex: Vec<(Ptr,Ptr)>, // redexes
+  pub rdex: Worker<Redex>, // redexes
   pub locs: Vec<Loc>,
   pub area: Area, // allocation area
   pub next: usize, // next allocation index within area
@@ -126,7 +132,7 @@ pub struct Net<'a> {
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Def {
   pub safe: bool,
-  pub rdex: Vec<(Ptr, Ptr)>,
+  pub rdex: Vec<Redex>,
   pub node: Vec<(Ptr, Ptr)>,
 }
 
@@ -410,13 +416,27 @@ impl AtomicRewrites {
 }
 
 impl<'a> Net<'a> {
-  // Creates an empty net with given size.
+  // Creates an empty net with given heap data
   pub fn new(data: &'a Data) -> Self {
     Net {
       tid : 0,
       tids: 1,
       heap: Heap { data },
-      rdex: vec![],
+      rdex: Worker::new(WORKER_QUEUE_CAPACITY),
+      locs: vec![0; 1 << 16],
+      area: Area { init: 0, size: data.len() },
+      next: 0,
+      rwts: Rewrites::new(),
+    }
+  }
+
+  // Creates an empty net with given heap data and worker
+  pub fn new_with_worker(data: &'a Data, worker: Worker<Redex>) -> Self {
+    Net {
+      tid : 0,
+      tids: 1,
+      heap: Heap { data },
+      rdex: worker,
       locs: vec![0; 1 << 16],
       area: Area { init: 0, size: data.len() },
       next: 0,
@@ -443,8 +463,12 @@ impl<'a> Net<'a> {
       self.area.init as Loc + self.next as Loc
     // On later passes, search for an available slot.
     } else {
+      let limit = self.next + self.area.size;
       loop {
         self.next += 1;
+        if self.next >= limit {
+          panic!("out of memory");
+        }
         let index = (self.area.init + self.next % self.area.size) as Loc;
         if self.heap.get(index, P1).is_nil() && self.heap.get(index, P2).is_nil() {
           break index;
@@ -496,7 +520,7 @@ impl<'a> Net<'a> {
     if Ptr::can_skip(a, b) {
       self.rwts.eras += 1;
     } else {
-      self.rdex.push((a, b));
+      self.rdex.push((a, b)).expect("capacity");
     }
   }
 
@@ -657,7 +681,7 @@ impl<'a> Net<'a> {
   }
 
   // Atomic linker for when 'b_ptr' is an aux port.
-  pub fn atomic_linker_var(&mut self, a_ptr: Ptr, a_dir: Ptr, b_ptr: Ptr) {
+  pub fn atomic_linker_var(&mut self, _a_ptr: Ptr, _a_dir: Ptr, b_ptr: Ptr) {
     loop {
       let ste_dir = b_ptr;
       let ste_ptr = self.get_target(ste_dir);
@@ -686,7 +710,7 @@ impl<'a> Net<'a> {
       (Trg::Ptr(a_ptr), Trg::Ptr(b_ptr)) => self.link(a_ptr, b_ptr),
     }
   }
-  
+
   // Performs an interaction over a redex.
   #[inline(always)]
   pub fn interact(&mut self, book: &Book, a: Ptr, b: Ptr) {
@@ -903,7 +927,7 @@ impl<'a> Net<'a> {
         for r in &got.rdex {
           let p1 = self.adjust(r.0);
           let p2 = self.adjust(r.1);
-          self.rdex.push((p1, p2));
+          self.rdex.push((p1, p2)).expect("capacity");
         }
         // Load root, adjusted.
         ptr = self.adjust(got.node[0].1);
@@ -929,6 +953,7 @@ impl<'a> Net<'a> {
     while let Some((a, b)) = self.rdex.pop() {
       //if !a.is_nil() && !b.is_nil() {
         self.interact(book, a, b);
+
         count += 1;
         if count >= limit {
           break;
@@ -963,28 +988,25 @@ impl<'a> Net<'a> {
   }
 
   // Reduce a net to normal form.
-  pub fn normal(&mut self, book: &Book) {
+  pub fn normal(&mut self, book: &Book) -> std::time::Duration {
+    let start_time = std::time::Instant::now();
     self.expand(book);
-    while self.rdex.len() > 0 {
+    while !self.rdex.is_empty() {
       self.reduce(book, usize::MAX);
       self.expand(book);
     }
+    start_time.elapsed()
   }
 
   // Forks into child threads, returning a Net for the (tid/tids)'th thread.
-  pub fn fork(&self, tid: usize, tids: usize) -> Self {
-    let mut net = Net::new(self.heap.data);
+  pub fn fork(&self, tid: usize, tids: usize, worker: Worker<Redex>) -> Self {
+    let mut net = Net::new_with_worker(&self.heap.data, worker);
     net.tid  = tid;
     net.tids = tids;
     net.area = Area {
       init: self.heap.data.len() * tid / tids,
       size: self.heap.data.len() / tids,
     };
-    let from = self.rdex.len() * (tid + 0) / tids;
-    let upto = self.rdex.len() * (tid + 1) / tids;
-    for i in from .. upto {
-      net.rdex.push((self.rdex[i].0, self.rdex[i].1));
-    }
     if tid == 0 {
       net.next = self.next;
     }
@@ -992,24 +1014,21 @@ impl<'a> Net<'a> {
   }
 
   // Evaluates a term to normal form in parallel
-  pub fn parallel_normal(&mut self, book: &Book) {
-
-    const SHARE_LIMIT : usize = 1 << 12; // max share redexes per split 
+  pub fn parallel_normal(&mut self, book: &Book) -> std::time::Duration {
     const LOCAL_LIMIT : usize = 1 << 18; // max local rewrites per epoch
 
     // Local thread context
     struct ThreadContext<'a> {
       tid: usize, // thread id
       tids: usize, // thread count
-      tlog2: usize, // log2 of thread count
-      tick: usize, // current tick
       net: Net<'a>, // thread's own net object
       book: &'a Book, // definition book
       delta: &'a AtomicRewrites, // global delta rewrites
-      share: &'a Vec<(APtr, APtr)>, // global share buffer
-      rlens: &'a Vec<AtomicUsize>, // global redex lengths
-      total: &'a AtomicUsize, // total redex length
-      barry: Arc<Barrier>, // synchronization barrier
+      workers_with_non_empty_queues: &'a AtomicIsize, // how many workers have non-empty queues
+      barrier: &'a Barrier, // synchronization barrier
+      stealers: Vec<Stealer<Redex>>, // stealers
+      next_stealer_idx: usize, // next stealer to try
+      last_frame_is_not_empty: bool, // redex count of this worker, the last time count() was called
     }
 
     // Initialize global objects
@@ -1017,35 +1036,66 @@ impl<'a> Net<'a> {
     let tlog2 = cores.ilog2() as usize;
     let tids  = 1 << tlog2;
     let delta = AtomicRewrites::new(); // delta rewrite counter
-    let rlens = (0..tids).map(|_| AtomicUsize::new(0)).collect::<Vec<_>>();
-    let share = (0..SHARE_LIMIT*tids).map(|_| (APtr(AtomicU64::new(0)), APtr(AtomicU64::new(0)))).collect::<Vec<_>>();
-    let total = AtomicUsize::new(0); // sum of redex bag length
-    let barry = Arc::new(Barrier::new(tids)); // global barrier
+    let workers_with_non_empty_queues = AtomicIsize::new(0);
+    let barrier = Arc::new(Barrier::new(tids)); // global barrier
+
+    let worker_count = tids;
+    let workers = (0 .. worker_count).map(|_| Worker::<Redex>::new(WORKER_QUEUE_CAPACITY)).collect::<Vec<_>>();
+    let stealers = workers.iter().map(|w| w.stealer()).collect::<Vec<_>>();
+
+    let worker_redex_counts = (0 .. worker_count).map(|_| std::cell::Cell::new(0)).collect::<Vec<_>>();
+
+    // Initialize worker queues by distributing redexes evenly
+    let mut workers_iter = workers.iter().zip(&worker_redex_counts).cycle();
+    while let Some(redex) = self.rdex.pop() {
+      let (worker, worker_redex_count) = workers_iter.next().unwrap();
+
+      worker.push(redex).expect("capacity");
+      worker_redex_count.set(worker_redex_count.get() + 1); // increment worker redex count
+    }
+
+    // Set `workers_with_non_empty_queues` to the number of workers with non-empty queues
+    for worker in &workers {
+      let val = !worker.is_empty() as isize;
+      workers_with_non_empty_queues.fetch_add(val, Ordering::Relaxed);
+    }
+
+    let thread_contexts = workers.into_iter().enumerate().map(|(tid, worker)| {
+      ThreadContext {
+        tid,
+        tids,
+        net: self.fork(tid, tids, worker),
+        book: &book,
+        delta: &delta,
+        workers_with_non_empty_queues: &workers_with_non_empty_queues,
+        barrier: &barrier,
+        stealers: {
+          // TODO: Don't clone?
+          // https://lemire.me/blog/2017/09/18/visiting-all-values-in-an-array-exactly-once-in-random-order
+          let mut stealers = stealers.clone();
+          // We never want to steal from ourselves
+          stealers.remove(tid);
+          // Every worker gets a randomized permutation of the stealers
+          fastrand::shuffle(&mut stealers);
+          stealers
+        },
+        next_stealer_idx: 0,
+        last_frame_is_not_empty: worker_redex_counts[tid].get() > 0,
+      }
+    }).collect::<Vec<_>>();
 
     // Perform parallel reductions
-    std::thread::scope(|s| {
-      for tid in 0 .. tids {
-        let mut ctx = ThreadContext {
-          tid: tid,
-          tids: tids,
-          tick: 0,
-          net: self.fork(tid, tids),
-          book: &book,
-          tlog2: tlog2,
-          delta: &delta,
-          share: &share,
-          rlens: &rlens,
-          total: &total,
-          barry: Arc::clone(&barry),
-        };
+    let start_time = std::time::Instant::now();
+    std::thread::scope(move |s| {
+      for (tid, mut ctx) in thread_contexts.into_iter().enumerate() {
         s.spawn(move || {
-          main(&mut ctx)
+          main(&mut ctx);
         });
       }
     });
+    let elapsed = start_time.elapsed();
 
-    // Clear redexes and sum stats
-    self.rdex.clear();
+    // Sum stats
     delta.add_to(&mut self.rwts);
 
     // Main reduction loop
@@ -1063,14 +1113,19 @@ impl<'a> Net<'a> {
     #[inline(always)]
     fn reduce(ctx: &mut ThreadContext) {
       loop {
-        let reduced = ctx.net.reduce(ctx.book, LOCAL_LIMIT);
+        let _reduced = ctx.net.reduce(ctx.book, LOCAL_LIMIT);
         //println!("[{:04x}] reduced {}", ctx.tid, reduced);
         if count(ctx) == 0 {
           break;
         }
-        let tlog2 = ctx.tlog2;
-        split(ctx, tlog2);
-        ctx.tick += 1;
+
+        // Steal redexes from other workers
+        while {
+          let stealer = unsafe { ctx.stealers.get_unchecked(ctx.next_stealer_idx) };
+          ctx.next_stealer_idx = (ctx.next_stealer_idx + 1) % ctx.stealers.len();
+          let res = stealer.steal(&ctx.net.rdex, |n| n / 2);
+          matches!(res, Err(StealError::Busy))
+        } {}
       }
     }
 
@@ -1080,57 +1135,36 @@ impl<'a> Net<'a> {
       ctx.net.expand(ctx.book);
     }
 
-    // Count total redexes (and populate 'rlens')
+    // Count how many workers have non-empty queues
     #[inline(always)]
     fn count(ctx: &mut ThreadContext) -> usize {
-      ctx.barry.wait();
-      ctx.total.store(0, Ordering::Relaxed);
-      ctx.barry.wait();
-      ctx.rlens[ctx.tid].store(ctx.net.rdex.len(), Ordering::Relaxed);
-      ctx.total.fetch_add(ctx.net.rdex.len(), Ordering::Relaxed);
-      ctx.barry.wait();
-      return ctx.total.load(Ordering::Relaxed);
+      // // This was the original code, but it's not as fast as the code below.
+      // ctx.barry.wait();
+      // ctx.workers_with_non_empty_queues.store(0, Ordering::Relaxed);
+      // ctx.barry.wait();
+      // let cur_frame_val = !ctx.net.rdex.is_empty() as isize;
+      // ctx.rlens[ctx.tid].store(cur_frame_val as _, Ordering::Relaxed);
+      // ctx.workers_with_non_empty_queues.fetch_add(cur_frame_val, Ordering::Relaxed);
+      // ctx.barry.wait();
+      // ctx.workers_with_non_empty_queues.load(Ordering::Relaxed) as usize
+
+      // // This is a bit faster (2 barriers instead of 3), but we're iterating
+      // // over the entire array of `rlens``, which could be slow on a manycore CPU.
+      // ctx.barry.wait();
+      // ctx.rlens[ctx.tid].store(!ctx.net.rdex.is_empty() as _, Ordering::Relaxed);
+      // ctx.barry.wait();
+      // ctx.rlens.iter().map(|x| x.load(Ordering::Relaxed)).sum()
+
+      // This is the fastest approach (2 barriers instead of 3), and without iteration
+      let cur_frame_val = !ctx.net.rdex.is_empty();
+      let difference = (cur_frame_val as isize) - (ctx.last_frame_is_not_empty as isize);
+      ctx.last_frame_is_not_empty = cur_frame_val;
+      ctx.barrier.wait();
+      ctx.workers_with_non_empty_queues.fetch_add(difference, Ordering::Relaxed);
+      ctx.barrier.wait();
+      ctx.workers_with_non_empty_queues.load(Ordering::Relaxed) as usize
     }
 
-
-    // Share redexes with target thread
-    #[inline(always)]
-    fn split(ctx: &mut ThreadContext, plog2: usize) {
-      unsafe {
-        let side  = (ctx.tid >> (plog2 - 1 - (ctx.tick % plog2))) & 1;
-        let shift = (1 << (plog2 - 1)) >> (ctx.tick % plog2);
-        let a_tid = ctx.tid;
-        let b_tid = if side == 1 { a_tid - shift } else { a_tid + shift };
-        let a_len = ctx.net.rdex.len();
-        let b_len = ctx.rlens[b_tid].load(Ordering::Relaxed);
-        let send  = if a_len > b_len { (a_len - b_len) / 2 } else { 0 };
-        let recv  = if b_len > a_len { (b_len - a_len) / 2 } else { 0 };
-        let send  = std::cmp::min(send, SHARE_LIMIT);
-        let recv  = std::cmp::min(recv, SHARE_LIMIT);
-        for i in 0 .. send {
-          let init = a_len - send * 2;
-          let rdx0 = *ctx.net.rdex.get_unchecked(init + i * 2 + 0);
-          let rdx1 = *ctx.net.rdex.get_unchecked(init + i * 2 + 1);
-          //let init = 0;
-          //let ref0 = ctx.net.rdex.get_unchecked_mut(init + i * 2 + 0);
-          //let rdx0 = *ref0;
-          //*ref0    = (Ptr(0), Ptr(0));
-          //let ref1 = ctx.net.rdex.get_unchecked_mut(init + i * 2 + 1);
-          //let rdx1 = *ref1;
-          //*ref1    = (Ptr(0), Ptr(0));
-          let targ = ctx.share.get_unchecked(b_tid * SHARE_LIMIT + i);
-          *ctx.net.rdex.get_unchecked_mut(init + i) = rdx0;
-          targ.0.store(rdx1.0);
-          targ.1.store(rdx1.1);
-        }
-        ctx.net.rdex.truncate(a_len - send);
-        ctx.barry.wait();
-        for i in 0 .. recv {
-          let got = ctx.share.get_unchecked(a_tid * SHARE_LIMIT + i);
-          ctx.net.rdex.push((got.0.load(), got.1.load()));
-        }
-      }
-    }
+    elapsed
   }
-
 }

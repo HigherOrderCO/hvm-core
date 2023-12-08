@@ -6,10 +6,15 @@
 // syntax reflects this representation. The grammar is specified on this repo's README.
 
 use crate::run;
+use crate::run::Heap;
+use crate::run::WORKER_QUEUE_CAPACITY;
+use st3::lifo::Worker;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::iter::Peekable;
 use std::str::Chars;
+use std::sync::Arc;
+use std::sync::atomic::AtomicIsize;
 
 // AST
 // ---
@@ -555,7 +560,7 @@ pub fn net_to_runtime(rt_net: &mut run::Net, net: &Net) {
   for (tree1, tree2) in &net.rdex {
     let ptr1 = tree_to_runtime_go(rt_net, tree1, &mut vars, Parent::Redex);
     let ptr2 = tree_to_runtime_go(rt_net, tree2, &mut vars, Parent::Redex);
-    rt_net.rdex.push((ptr1, ptr2));
+    rt_net.rdex.push((ptr1, ptr2)).expect("capacity");
   }
 }
 
@@ -589,14 +594,14 @@ pub fn runtime_net_to_runtime_def(net: &run::Net) -> run::Def {
     } else {
       break;
     }
-    // TODO: this is too restrictive and should be 
+    // TODO: this is too restrictive and should be
     if is_unsafe(p1) || is_unsafe(p2) {
       safe = false;
     }
   }
-  for i in 0 .. net.rdex.len() {
-    let p1 = net.rdex[i].0;
-    let p2 = net.rdex[i].1;
+  while let Some(redex) = net.rdex.pop() {
+    let p1 = redex.0;
+    let p2 = redex.1;
     if is_unsafe(p1) || is_unsafe(p2) {
       safe = false;
     }
@@ -607,12 +612,13 @@ pub fn runtime_net_to_runtime_def(net: &run::Net) -> run::Def {
 
 // Reads back from a def.
 pub fn runtime_def_to_runtime_net<'a>(data: &'a run::Data, def: &run::Def) -> run::Net<'a> {
-  let mut net = run::Net::new(&data);
+    let mut net = run::Net::new(&data);
   for (i, &(p1, p2)) in def.node.iter().enumerate() {
     net.heap.set(i as run::Loc, run::P1, p1);
     net.heap.set(i as run::Loc, run::P2, p2);
   }
-  net.rdex = def.rdex.clone();
+  net.rdex = Worker::new(WORKER_QUEUE_CAPACITY);
+  net.rdex.extend(def.rdex.iter().copied());
   net
 }
 
@@ -698,10 +704,13 @@ pub fn net_from_runtime(rt_net: &run::Net) -> Net {
   let mut fresh = 0;
   let mut rdex = Vec::new();
   let root = tree_from_runtime_go(rt_net, rt_net.heap.get_root(), PARENT_ROOT, &mut vars, &mut fresh);
-  for &(a, b) in &rt_net.rdex {
-    let tree_a = tree_from_runtime_go(rt_net, a, Parent::Redex, &mut vars, &mut fresh);
-    let tree_b = tree_from_runtime_go(rt_net, b, Parent::Redex, &mut vars, &mut fresh);
-    rdex.push((tree_a, tree_b));
+  if !rt_net.rdex.is_empty() {
+    for (a, b) in rt_net.rdex.drain(|n| n).unwrap() {
+      let tree_a = tree_from_runtime_go(rt_net, a, Parent::Redex, &mut vars, &mut fresh);
+      let tree_b = tree_from_runtime_go(rt_net, b, Parent::Redex, &mut vars, &mut fresh);
+      rdex.push((tree_a, tree_b));
+      rt_net.rdex.push((a, b)).expect("capacity");
+    }
   }
   Net { root, rdex }
 }
