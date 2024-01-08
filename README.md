@@ -78,7 +78,7 @@ understand the hardcore syntax, keep reading.
 HVM-Core's textual syntax represents interaction combinators via an AST:
 
 ```
-<TERM> ::=
+ <TERM> ::=
   <ERA> ::= "*"
   <CON> ::= "(" <TERM> " " <TERM> ")"
   <TUP> ::= "[" <TERM> " " <TERM> "]"
@@ -91,7 +91,7 @@ HVM-Core's textual syntax represents interaction combinators via an AST:
 
 <NET> ::=
   <ROOT> ::= <TERM>
-  <RDEX> ::= "&" <TERM> "~" <TERM> <NET>
+  <RDEX> ::= "&" <TERM> "~" <TERM> <RDEX>
 
 <BOOK> ::= 
   <DEF> ::= "@" <name> "=" <NET> <BOOK>
