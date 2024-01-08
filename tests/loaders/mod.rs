@@ -36,12 +36,13 @@ pub fn replace_template(mut code: String, map: &[(&str, &str)]) -> String {
 pub fn hvm_lang_readback(net: &Net, book: &DefinitionBook, id_map: HashMap<run::Val, DefId>) -> (String, bool) {
   let net = hvml::net::hvmc_to_net::hvmc_to_net(net, &|val| id_map[&val]);
   let (res_term, readback_errs) = hvml::term::net_to_term::net_to_term(&net, book, &Default::default(), false);
+  let term_display = res_term.display(&book.def_names);
 
-  (res_term.clone().display(&book.def_names).to_string(), readback_errs.is_empty())
+  (term_display.to_string(), readback_errs.is_empty())
 }
 
 pub fn hvm_lang_normal<'a>(book: &mut DefinitionBook, size: usize) -> (run::Net<'a>, Net, HashMap<run::Val, DefId>) {
-  let result = hvml::compile_book(book).unwrap();
+  let result = hvml::compile_book(book, hvml::OptimizationLevel::Heavy).unwrap();
   let (root, res_lnet) = normal(result.core_book, size);
   (root, res_lnet, result.hvmc_names.hvmc_name_to_id)
 }

@@ -361,7 +361,7 @@ checksum = "d77f7ec81a6d05a3abb01ab6eb7590f6083d08449fe5a1c8b1e620283546ccb7"
 
 [[package]]
 name = "hvm-core"
-version = "0.2.11"
+version = "0.2.12"
 dependencies = [
  "criterion",
  "hvm-lang",
@@ -372,7 +372,7 @@ dependencies = [
 [[package]]
 name = "hvm-lang"
 version = "0.1.0"
-source = "git+https://github.com/HigherOrderCO/hvm-lang.git#e6861bb942fcf46147c9568145c23bdc1cc41237"
+source = "git+https://github.com/HigherOrderCO/hvm-lang.git#453f35c97b1e815360a6be4a3b8942a35db4e0e0"
 dependencies = [
  "chumsky",
  "clap",
