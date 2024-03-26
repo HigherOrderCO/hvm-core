@@ -15,6 +15,7 @@
     "dref",
     "dups",
     "effectful",
+    "fastrand",
     "fmts",
     "fuzzer",
     "hasher",

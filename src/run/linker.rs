@@ -1,3 +1,5 @@
+use st3::lifo::Worker;
+
 use super::*;
 
 /// Stores extra data needed about the nodes when in lazy mode. (In strict mode,
@@ -8,6 +10,8 @@ pub(super) struct Header {
   /// the port connected to the principal port of this node
   pub(super) targ: Port,
 }
+
+pub type Redex = (Port, Port);
 
 /// Manages linking ports and wires within the net.
 ///
@@ -24,13 +28,18 @@ pub struct Linker<'h, M: Mode> {
   _mode: PhantomData<M>,
 }
 
+pub const WORKER_QUEUE_CAPACITY: usize = 1 << 22;
+
 deref!({<'h, M: Mode>} Linker<'h, M> => self.allocator: Allocator<'h>);
 
 impl<'h, M: Mode> Linker<'h, M> {
   pub fn new(heap: &'h Heap) -> Self {
+    Linker::new_with_worker(heap, Worker::new(WORKER_QUEUE_CAPACITY))
+  }
+  pub(super) fn new_with_worker(heap: &'h Heap, worker: Worker<Redex>) -> Self {
     Linker {
       allocator: Allocator::new(heap),
-      redexes: RedexQueue::default(),
+      redexes: RedexQueue { fast: Vec::new(), slow: worker },
       rwts: Default::default(),
       headers: Default::default(),
       _mode: PhantomData,
@@ -96,7 +105,7 @@ impl<'h, M: Mode> Linker<'h, M> {
       if redex_would_shrink(&a, &b) {
         self.redexes.fast.push((a, b));
       } else {
-        self.redexes.slow.push((a, b));
+        self.redexes.slow.push((a, b)).expect("exceeded redex queue capacity");
       }
     } else {
       self.set_header(a.clone(), b.clone());
@@ -350,10 +359,10 @@ impl<'h, M: Mode> Linker<'h, M> {
   }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct RedexQueue {
-  pub(super) fast: Vec<(Port, Port)>,
-  pub(super) slow: Vec<(Port, Port)>,
+  pub(super) fast: Vec<Redex>,
+  pub(super) slow: Worker<Redex>,
 }
 
 impl RedexQueue {
@@ -363,29 +372,31 @@ impl RedexQueue {
     self.fast.pop().or_else(|| self.slow.pop())
   }
   #[inline(always)]
-  pub fn len(&self) -> usize {
-    self.fast.len() + self.slow.len()
-  }
-  #[inline(always)]
   pub fn is_empty(&self) -> bool {
     self.fast.is_empty() && self.slow.is_empty()
   }
   #[inline(always)]
   pub fn drain(&mut self) -> impl Iterator<Item = (Port, Port)> + '_ {
-    self.fast.drain(..).chain(self.slow.drain(..))
+    self.fast.drain(..).chain(self.slow.drain(|x| x).unwrap())
   }
   #[inline(always)]
   pub fn iter(&self) -> impl Iterator<Item = &(Port, Port)> {
-    self.fast.iter().chain(self.slow.iter())
+    // TODO
+    // todo!();
+    [].into_iter()
+    // self.fast.iter().chain(self.slow.)
   }
   #[inline(always)]
   pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut (Port, Port)> {
-    self.fast.iter_mut().chain(self.slow.iter_mut())
+    todo!();
+    [].into_iter()
+    // self.fast.iter_mut().chain(self.slow.iter_mut())
   }
   #[inline(always)]
   pub fn clear(&mut self) {
-    self.fast.clear();
-    self.slow.clear();
+    todo!();
+    // self.fast.clear();
+    // self.slow.clear();
   }
 }
 

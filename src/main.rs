@@ -513,7 +513,10 @@ fn compile_executable(target: &str, host: Arc<Mutex<host::Host>>) -> Result<(), 
     process::exit(1);
   }
 
-  fs::copy(".hvm/target/release/hvmc", target)?;
+  #[cfg(not(target_os = "windows"))]
+  fs::copy("./.hvm/target/release/hvmc", target)?;
+  #[cfg(target_os = "windows")]
+  fs::copy("./.hvm/target/release/hvmc.exe", target + ".exe")?;
 
   Ok(())
 }

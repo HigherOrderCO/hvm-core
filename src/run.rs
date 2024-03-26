@@ -35,7 +35,6 @@ use std::{
   mem::size_of,
   ops::{Add, AddAssign, Deref, DerefMut},
   sync::{Arc, Barrier},
-  thread,
 };
 
 #[cfg(feature = "_fuzz")]
@@ -48,7 +47,7 @@ use crate::fuzz::spin_loop;
 #[cfg(not(feature = "_fuzz"))]
 fn spin_loop() {} // this could use `std::hint::spin_loop`, but in practice it hurts performance
 
-use atomic::{AtomicU64, AtomicUsize, Ordering::Relaxed};
+use atomic::{AtomicU64, Ordering::Relaxed};
 
 use Tag::*;
 

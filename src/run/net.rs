@@ -1,5 +1,7 @@
 use std::mem::MaybeUninit;
 
+use st3::lifo::Worker;
+
 use super::*;
 
 /// An interaction combinator net.
@@ -23,6 +25,9 @@ impl<'h, M: Mode> Net<'h, M> {
 
   pub(super) fn new_with_root(heap: &'h Heap, root: Wire) -> Self {
     Net { linker: Linker::new(heap), tid: 0, tids: 1, trgs: Box::new_uninit_slice(1 << 16), root }
+  }
+  pub(super) fn new_with_root_worker(heap: &'h Heap, root: Wire, worker: Worker<Redex>) -> Self {
+    Net { linker: Linker::new_with_worker(heap, worker), tid: 0, tids: 1, trgs: Box::new_uninit_slice(1 << 16), root }
   }
 
   /// Boots a net from a Def.
