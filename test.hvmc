@@ -1,0 +1,8 @@
+@PowOfTwo = (?<(a a) @PowOfTwoHelp$C0 (#1 b)> b)
+@PowOfTwoHelp$C0 = (<+ #1 <- #1 ?<(a a) @PowOfTwoHelp$C0 (b <* #2 c>)>>> (b c))
+@Sum = (?<(a a) @SumHelp$C0 (#0 b)> b)
+@SumHelp$C0 = (<+ #1 <- #1 ?<(a a) @SumHelp$C0 (b c)>>> (<+ #1 b> c))
+@main = (a b)
+& @Sum ~ (c b)
+& @PowOfTwo ~ (a c)
+

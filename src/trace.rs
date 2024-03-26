@@ -64,7 +64,7 @@
 #![cfg_attr(not(feature = "trace"), allow(unused))]
 
 use std::{
-  cell::UnsafeCell,
+  cell::{Cell, UnsafeCell},
   fmt::{self, Debug, Formatter, Write},
   sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
@@ -74,7 +74,7 @@ use std::{
 
 use crate::{
   ops::Op,
-  run::{Addr, Port, Trg, Wire},
+  run::{Addr, Align, Port, Trg, Wire},
 };
 
 #[cfg(not(feature = "trace"))]
@@ -84,10 +84,10 @@ pub struct Tracer(());
 #[cfg(not(feature = "trace"))]
 impl Tracer {
   #[inline(always)]
-  pub fn sync(&mut self) {}
+  pub fn sync(&self) {}
   #[inline(always)]
   #[doc(hidden)]
-  pub fn trace<S: TraceSourceBearer, A: TraceArgs>(&mut self, _: A) {}
+  pub fn trace<S: TraceSourceBearer, A: TraceArgs>(&self, _: A) {}
   #[inline(always)]
   pub fn set_tid(&self, _: usize) {}
 }
@@ -124,12 +124,12 @@ pub struct Tracer(TraceWriter);
 #[cfg(feature = "trace")]
 impl Tracer {
   #[inline(always)]
-  pub fn sync(&mut self) {
+  pub fn sync(&self) {
     self.0.sync()
   }
   #[inline(always)]
   #[doc(hidden)]
-  pub fn trace<S: TraceSourceBearer, A: TraceArgs>(&mut self, args: A) {
+  pub fn trace<S: TraceSourceBearer, A: TraceArgs>(&self, args: A) {
     self.0.trace::<S, A>(args)
   }
   #[inline(always)]
@@ -183,7 +183,7 @@ static ACTIVE_TRACERS: Mutex<Vec<Box<TraceLock>>> = Mutex::new(Vec::new());
 
 struct TraceWriter {
   lock: &'static TraceLock,
-  nonce: u64,
+  nonce: Cell<u64>,
 }
 
 unsafe impl Send for TraceWriter {}
@@ -197,13 +197,13 @@ impl Default for TraceWriter {
     let lock = unsafe { &*(&*boxed as *const _) };
     let mut active_tracers = ACTIVE_TRACERS.lock().unwrap();
     active_tracers.push(boxed);
-    TraceWriter { lock, nonce: TRACE_NONCE.fetch_add(1, Ordering::Relaxed) }
+    TraceWriter { lock, nonce: Cell::new(TRACE_NONCE.fetch_add(1, Ordering::Relaxed)) }
   }
 }
 
 impl TraceWriter {
-  fn sync(&mut self) {
-    self.nonce = TRACE_NONCE.fetch_add(1, Ordering::Relaxed);
+  fn sync(&self) {
+    self.nonce.set(TRACE_NONCE.fetch_add(1, Ordering::Relaxed));
   }
   fn acquire(&self, cb: impl FnOnce(&mut TraceData)) {
     while self.lock.locked.compare_exchange_weak(false, true, Ordering::Relaxed, Ordering::Relaxed).is_err() {
@@ -212,13 +212,13 @@ impl TraceWriter {
     cb(unsafe { &mut *self.lock.data.get() });
     self.lock.locked.store(false, Ordering::Release);
   }
-  fn trace<S: TraceSourceBearer, A: TraceArgs>(&mut self, args: A) {
+  fn trace<S: TraceSourceBearer, A: TraceArgs>(&self, args: A) {
     if cfg!(feature = "_fuzz") {
       self.sync();
     }
     let meta: &'static _ = &TraceMetadata { source: S::SOURCE, arg_fmts: A::FMTS };
     self.acquire(|data| {
-      let nonce = self.nonce;
+      let nonce = self.nonce.get();
       for arg in args.to_words().rev() {
         data.write_word(arg);
       }
@@ -366,6 +366,15 @@ impl TraceArg for Op {
   }
   fn from_word(word: u64) -> impl Debug {
     unsafe { Op::try_from(word as u16).unwrap_unchecked() }
+  }
+}
+
+impl TraceArg for Align {
+  fn to_word(&self) -> u64 {
+    *self as u64
+  }
+  fn from_word(word: u64) -> impl Debug {
+    unsafe { Align::try_from(word as u8).unwrap_unchecked() }
   }
 }
 

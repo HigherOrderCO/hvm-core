@@ -7,6 +7,7 @@ impl<'h, M: Mode> Net<'h, M> {
     let mut redexes = self.linker.redexes.drain();
     let heap = &self.linker.allocator.heap;
     let next = &self.linker.allocator.next;
+    let heads = self.linker.allocator.heads;
     let root = &self.root;
     (0 .. tids).map(move |tid| {
       let heap_size = (heap.0.len() / tids) & !63; // round down to needed alignment
@@ -14,7 +15,7 @@ impl<'h, M: Mode> Net<'h, M> {
       let area = unsafe { std::mem::transmute(&heap.0[heap_start .. heap_start + heap_size]) };
       let mut net = Net::new_with_root(area, root.clone());
       net.next = next.saturating_sub(heap_start);
-      net.head = if tid == 0 { net.head } else { Addr::NULL };
+      net.heads = if tid == 0 { heads } else { [Addr::NULL; 4] };
       net.tid = tid;
       net.tids = tids;
       net.tracer.set_tid(tid);
@@ -28,7 +29,8 @@ impl<'h, M: Mode> Net<'h, M> {
   pub fn parallel_normal(&mut self) {
     assert!(!M::LAZY);
 
-    self.expand();
+    // todo
+    // self.expand();
 
     const SHARE_LIMIT: usize = 1 << 12; // max share redexes per split
     const LOCAL_LIMIT: usize = 1 << 18; // max local rewrites per epoch

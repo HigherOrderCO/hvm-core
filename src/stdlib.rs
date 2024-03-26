@@ -18,8 +18,12 @@ use crate::{
 pub const IDENTITY: *const Def = const { &Def::new(LabSet::from_bits(&[1]), (call_identity, call_identity)) }.upcast();
 
 fn call_identity<M: Mode>(net: &mut Net<M>, port: Port) {
-  let (a, b) = net.do_ctr(0, Trg::port(port));
-  net.link_trg(a, b);
+  #[cfg(todo)]
+  {
+    let (a, b) = net.do_ctr(0, Trg::port(port));
+    net.link_trg(a, b);
+  }
+  todo!()
 }
 
 /// The definition of `HVM.log`, parameterized by the readback function.
@@ -35,12 +39,15 @@ impl<F: Fn(Tree) + Clone + Send + Sync + 'static> LogDef<F> {
   /// The caller must ensure that the returned value lives at least as long as
   /// the port where it is used.
   pub unsafe fn new(host: Arc<Mutex<Host>>, f: F) -> DefRef {
-    HostedDef::new_hosted(LabSet::ALL, LogDef(host, f))
+    #[cfg(todo)]
+    HostedDef::new_hosted(LabSet::ALL, LogDef(host, f));
+    todo!()
   }
 }
 
 pub struct LogDef<F>(Arc<Mutex<Host>>, F);
 
+#[cfg(todo)]
 impl<F: Fn(Tree) + Clone + Send + Sync + 'static> AsHostedDef for LogDef<F> {
   fn call<M: Mode>(def: &Def<Self>, net: &mut Net<M>, port: Port) {
     let (arg, seq) = net.do_ctr(0, Trg::port(port));
@@ -71,13 +78,13 @@ impl<F: Fn(Tree) + Clone + Send + Sync + 'static> AsHostedDef for LogDef<F> {
 /// Create a `Host` from a `Book`, including `hvm-core`'s built-in definitions
 pub fn create_host(book: &Book) -> Arc<Mutex<Host>> {
   let host = Arc::new(Mutex::new(Host::default()));
-  host.lock().unwrap().insert_def("HVM.log", unsafe {
-    crate::stdlib::LogDef::new(host.clone(), {
-      move |tree| {
-        println!("{}", tree);
-      }
-    })
-  });
+  // host.lock().unwrap().insert_def("HVM.log", unsafe {
+  //   crate::stdlib::LogDef::new(host.clone(), {
+  //     move |tree| {
+  //       println!("{}", tree);
+  //     }
+  //   })
+  // });
   host.lock().unwrap().insert_def("HVM.black_box", DefRef::Static(unsafe { &*IDENTITY }));
   host.lock().unwrap().insert_book(&book);
   host
@@ -209,6 +216,7 @@ impl<F: FnOnce(DynNetMut) + Send + Sync + 'static> ReadbackDef<F> {
 
 impl<F: FnOnce(DynNetMut) + Send + Sync + 'static> AsBoxDef for ReadbackDef<F> {
   fn call<M: Mode>(def: Box<Def<Self>>, net: &mut Net<M>, port: Port) {
+    #[cfg(todo)]
     match port.tag() {
       Tag::Red => {
         unreachable!()

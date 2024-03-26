@@ -1,0 +1,9 @@
+Main n = (Sum (PowOfTwo n))
+
+PowOfTwo n = (PowOfTwoHelp 1 n)
+PowOfTwoHelp acc 0 = acc
+PowOfTwoHelp acc e = (* 2 (PowOfTwoHelp acc (- e 1)))
+
+Sum n = (SumHelp 0 n)
+SumHelp acc 0 = acc
+SumHelp acc n = (SumHelp (+ acc 1) (- n 1))

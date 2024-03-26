@@ -16,8 +16,8 @@ deref!({<'a, M: Mode>} Net<'a, M> => self.linker: Linker<'a, M>);
 impl<'h, M: Mode> Net<'h, M> {
   /// Creates an empty net with a given heap.
   pub fn new(heap: &'h Heap) -> Self {
-    let mut net = Net::new_with_root(heap, Wire(std::ptr::null()));
-    net.root = Wire::new(net.alloc());
+    let mut net = Net::new_with_root(heap, Wire(0));
+    net.root = Wire::new(Align2, net.alloc(Align2));
     net
   }
 
@@ -63,13 +63,13 @@ impl<'a, M: Mode> Net<'a, M> {
     let mut path: Vec<Port> = vec![];
 
     loop {
-      trace!(self.tracer, prev);
+      trace!(self, prev);
       // Load ptrs
       let next = self.get_target_full(prev.clone());
-      trace!(self.tracer, next);
+      trace!(self, next);
 
       // If next is root, stop.
-      if next == Port::new_var(root.addr()) || next == Port::new_var(self.root.addr()) {
+      if next == root.as_var() || next == self.root.as_var() {
         break;
       }
 
@@ -81,7 +81,7 @@ impl<'a, M: Mode> Net<'a, M> {
           prev = path.pop().unwrap();
           continue;
         // Otherwise, if it is a ref, expand it.
-        } else if next.tag() == Ref && next != Port::ERA {
+        } else if next.is(Tag::Ref) && next != Port::ERA {
           self.call(next, prev.clone());
           continue;
         // Otherwise, we're done.
@@ -91,7 +91,7 @@ impl<'a, M: Mode> Net<'a, M> {
       }
 
       // If next is an aux port, pass through.
-      let main = self.get_header(next.addr().left_half());
+      let main = self.get_header(next.addr().floor(next.alloc_align()));
       path.push(prev);
       prev = main.this.clone();
     }
@@ -101,15 +101,17 @@ impl<'a, M: Mode> Net<'a, M> {
 
   pub fn normal_from(&mut self, root: Wire) {
     assert!(M::LAZY);
-    let mut visit = vec![Port::new_var(root.addr())];
+    let mut visit = vec![root.as_var()];
     while let Some(prev) = visit.pop() {
-      trace!(self.tracer, "visit", prev);
+      trace!(self, "visit", prev);
       //println!("normal {} | {}", prev.view(), self.rewrites());
       let next = self.weak_normal(prev, root.clone());
-      trace!(self.tracer, "got", next);
+      trace!(self, "got", next);
       if next.is_full_node() {
-        visit.push(Port::new_var(next.addr()));
-        visit.push(Port::new_var(next.addr().other_half()));
+        for i in 0 .. next.tag().arity() {}
+        todo!();
+        // visit.push(Port::new_var( next.addr()));
+        // visit.push(Port::new_var( next.addr().other_half()));
       }
     }
   }
@@ -119,7 +121,8 @@ impl<'a, M: Mode> Net<'a, M> {
     if M::LAZY {
       self.normal_from(self.root.clone());
     } else {
-      self.expand();
+      // todo!
+      // self.expand();
       while !self.redexes.is_empty() {
         self.reduce(usize::MAX);
       }
@@ -165,6 +168,8 @@ impl AsDef for ExpandDef {
         unreachable!()
       }
       Tag::Ref | Tag::Num | Tag::Var => net.link_port_port(def.data.out, port),
+      _ => todo!(),
+      #[cfg(todo)]
       tag @ (Tag::Op | Tag::Mat | Tag::Ctr) => {
         let old = port.consume_node();
         let new = net.create_node(tag, old.lab);

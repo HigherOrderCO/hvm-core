@@ -1,0 +1,32 @@
+@S = (a {2 {2 a b} {2 * b}})
+@Z = {2 * {2 a a}}
+@add$C0 = {2 {2 @add$C0 {2 (a a) (b c)}} (b {2 {2 c d} {2 * d}})}
+@era = ({2 @era$C0 {2 @Z a}} a)
+@era$C0 = {2 {2 @era$C0 {2 @Z a}} a}
+@main = a
+& @era ~ (b a)
+& @pow ~ (c b)
+& @S ~ (d c)
+& @S ~ (e d)
+& @S ~ (f e)
+& @S ~ (g f)
+& @S ~ (h g)
+& @S ~ (i h)
+& @S ~ (j i)
+& @S ~ (k j)
+& @S ~ (l k)
+& @S ~ (m l)
+& @S ~ (n m)
+& @S ~ (o n)
+& @S ~ (p o)
+& @S ~ (q p)
+& @S ~ (r q)
+& @S ~ (s r)
+& @S ~ (t s)
+& @S ~ (u t)
+& @S ~ (v u)
+& @S ~ (w v)
+& @S ~ (x w)
+& @S ~ (@Z x)
+@pow = ({2 @pow$C0 {2 {2 {2 @Z a} {2 * a}} b}} b)
+@pow$C0 = {2 {3 {2 @pow$C0 {2 {2 {2 @Z a} {2 * a}} {2 @add$C0 {2 (b b) (c d)}}}} {2 @pow$C0 {2 {2 {2 @Z e} {2 * e}} c}}} d}

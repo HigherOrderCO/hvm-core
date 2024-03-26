@@ -1,3 +1,5 @@
+use arrayvec::ArrayVec;
+
 use super::*;
 use crate::{ops::Op, run::Lab, util::maybe_grow};
 
@@ -69,33 +71,28 @@ impl<'a, E: Encoder> State<'a, E> {
         if ports.is_empty() {
           return self.visit_tree(&Tree::Era, trg);
         }
-        let mut trg = trg;
-        for port in &ports[0 .. ports.len() - 1] {
-          let (l, r) = self.encoder.ctr(*lab, trg);
-          self.visit_tree(port, l);
-          trg = r;
+        if ports.len() == 1 {
+          return self.visit_tree(&ports[0], trg);
         }
-        self.visit_tree(ports.last().unwrap(), trg);
+        if ports.len() == 2 {
+          let (a, b) = self.encoder.ctr2(*lab, trg);
+          self.visit_tree(&ports[0], a);
+          self.visit_tree(&ports[1], b);
+          return;
+        }
+        for (i, t) in self.encoder.ctrn(*lab, trg, ports.len() as u8).into_iter().enumerate() {
+          self.visit_tree(&ports[i], t);
+        }
       }
       Tree::Adt { lab, variant_index, variant_count, fields } => {
-        let mut trg = trg;
-        for _ in 0 .. *variant_index {
-          let (l, r) = self.encoder.ctr(*lab, trg);
-          self.visit_tree(&Tree::Era, l);
-          trg = r;
+        for (i, t) in self
+          .encoder
+          .adtn(*lab, trg, *variant_index as u8, *variant_count as u8, fields.len() as u8)
+          .into_iter()
+          .enumerate()
+        {
+          self.visit_tree(&fields[i], t);
         }
-        let (mut l, mut r) = self.encoder.ctr(*lab, trg);
-        for field in fields {
-          let (x, y) = self.encoder.ctr(*lab, l);
-          self.visit_tree(field, x);
-          l = y;
-        }
-        for _ in 0 .. (*variant_count - *variant_index - 1) {
-          let (x, y) = self.encoder.ctr(*lab, r);
-          self.visit_tree(&Tree::Era, x);
-          r = y;
-        }
-        self.encoder.link(l, r);
       }
       Tree::Op { op, rhs: lft, out: rgt } => {
         let (l, r) = self.encoder.op(*op, trg);
@@ -103,8 +100,7 @@ impl<'a, E: Encoder> State<'a, E> {
         self.visit_tree(rgt, r);
       }
       Tree::Mat { zero, succ, out } => {
-        let (a, o) = self.encoder.mat(trg);
-        let (z, s) = self.encoder.ctr(0, a);
+        let (z, s, o) = self.encoder.mat(trg);
         self.visit_tree(zero, z);
         self.visit_tree(succ, s);
         self.visit_tree(out, o);
@@ -124,10 +120,19 @@ trait Encoder {
   fn link_const(&mut self, trg: Self::Trg, port: Port);
   fn link(&mut self, a: Self::Trg, b: Self::Trg);
   fn make_const(&mut self, port: Port) -> Self::Trg;
-  fn ctr(&mut self, lab: Lab, trg: Self::Trg) -> (Self::Trg, Self::Trg);
+  fn ctr2(&mut self, lab: Lab, trg: Self::Trg) -> (Self::Trg, Self::Trg);
+  fn ctrn(&mut self, lab: Lab, trg: Self::Trg, n: u8) -> ArrayVec<Self::Trg, 8>;
+  fn adtn(
+    &mut self,
+    lab: Lab,
+    trg: Self::Trg,
+    variant_index: u8,
+    variant_count: u8,
+    arity: u8,
+  ) -> ArrayVec<Self::Trg, 7>;
   fn op(&mut self, op: Op, trg: Self::Trg) -> (Self::Trg, Self::Trg);
   fn op_num(&mut self, op: Op, trg: Self::Trg, rhs: u64) -> Self::Trg;
-  fn mat(&mut self, trg: Self::Trg) -> (Self::Trg, Self::Trg);
+  fn mat(&mut self, trg: Self::Trg) -> (Self::Trg, Self::Trg, Self::Trg);
   fn wires(&mut self) -> (Self::Trg, Self::Trg, Self::Trg, Self::Trg);
 }
 
@@ -152,11 +157,34 @@ impl Encoder for InterpretedDef {
     self.instr.push(Instruction::Const { trg, port });
     trg
   }
-  fn ctr(&mut self, lab: Lab, trg: Self::Trg) -> (Self::Trg, Self::Trg) {
+  fn ctr2(&mut self, lab: Lab, trg: Self::Trg) -> (Self::Trg, Self::Trg) {
     let lft = self.new_trg_id();
     let rgt = self.new_trg_id();
-    self.instr.push(Instruction::Ctr { lab, trg, lft, rgt });
+    self.instr.push(Instruction::Ctr2 { lab, trg, lft, rgt });
     (lft, rgt)
+  }
+  fn ctrn(&mut self, lab: Lab, trg: Self::Trg, n: u8) -> ArrayVec<Self::Trg, 8> {
+    let mut ports = ArrayVec::new();
+    for _ in 0 .. n {
+      ports.push(self.new_trg_id());
+    }
+    self.instr.push(Instruction::CtrN { lab, trg, ports: ports.clone() });
+    ports
+  }
+  fn adtn(
+    &mut self,
+    lab: Lab,
+    trg: Self::Trg,
+    variant_index: u8,
+    variant_count: u8,
+    arity: u8,
+  ) -> ArrayVec<Self::Trg, 7> {
+    let mut fields = ArrayVec::new();
+    for _ in 0 .. arity {
+      fields.push(self.new_trg_id());
+    }
+    self.instr.push(Instruction::AdtN { lab, trg, variant_index, variant_count, fields: fields.clone() });
+    fields
   }
   fn op(&mut self, op: Op, trg: Self::Trg) -> (Self::Trg, Self::Trg) {
     let rhs = self.new_trg_id();
@@ -169,11 +197,12 @@ impl Encoder for InterpretedDef {
     self.instr.push(Instruction::OpNum { op, trg, rhs, out });
     out
   }
-  fn mat(&mut self, trg: Self::Trg) -> (Self::Trg, Self::Trg) {
-    let lft = self.new_trg_id();
-    let rgt = self.new_trg_id();
-    self.instr.push(Instruction::Mat { trg, lft, rgt });
-    (lft, rgt)
+  fn mat(&mut self, trg: Self::Trg) -> (Self::Trg, Self::Trg, Self::Trg) {
+    let zero = self.new_trg_id();
+    let succ = self.new_trg_id();
+    let out = self.new_trg_id();
+    self.instr.push(Instruction::Mat { trg, zero, succ, out });
+    (zero, succ, out)
   }
   fn wires(&mut self) -> (Self::Trg, Self::Trg, Self::Trg, Self::Trg) {
     let av = self.new_trg_id();
@@ -196,8 +225,21 @@ impl<'a, M: Mode> Encoder for run::Net<'a, M> {
   fn make_const(&mut self, port: Port) -> Self::Trg {
     run::Trg::port(port)
   }
-  fn ctr(&mut self, lab: Lab, trg: Self::Trg) -> (Self::Trg, Self::Trg) {
-    self.do_ctr(lab, trg)
+  fn ctr2(&mut self, lab: Lab, trg: Self::Trg) -> (Self::Trg, Self::Trg) {
+    self.do_ctr2(lab, trg)
+  }
+  fn ctrn(&mut self, lab: Lab, trg: Self::Trg, n: u8) -> ArrayVec<Self::Trg, 8> {
+    self.do_ctrn(lab, trg, n)
+  }
+  fn adtn(
+    &mut self,
+    lab: Lab,
+    trg: Self::Trg,
+    variant_index: u8,
+    variant_count: u8,
+    arity: u8,
+  ) -> ArrayVec<Self::Trg, 7> {
+    self.do_adtn(lab, trg, variant_index, variant_count, arity)
   }
   fn op(&mut self, op: Op, trg: Self::Trg) -> (Self::Trg, Self::Trg) {
     self.do_op(op, trg)
@@ -205,7 +247,7 @@ impl<'a, M: Mode> Encoder for run::Net<'a, M> {
   fn op_num(&mut self, op: Op, trg: Self::Trg, rhs: u64) -> Self::Trg {
     self.do_op_num(op, trg, rhs)
   }
-  fn mat(&mut self, trg: Self::Trg) -> (Self::Trg, Self::Trg) {
+  fn mat(&mut self, trg: Self::Trg) -> (Self::Trg, Self::Trg, Self::Trg) {
     self.do_mat(trg)
   }
   fn wires(&mut self) -> (Self::Trg, Self::Trg, Self::Trg, Self::Trg) {

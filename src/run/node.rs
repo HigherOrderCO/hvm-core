@@ -19,8 +19,8 @@ impl Port {
     TraverseNode {
       tag: self.tag(),
       lab: self.lab(),
-      p1: Wire::new(self.addr()),
-      p2: Wire::new(self.addr().other_half()),
+      p1: Wire::new(self.align(), self.addr()),
+      p2: Wire::new(self.align(), self.addr().other(Align1)),
     }
   }
 }
@@ -34,30 +34,29 @@ pub struct CreatedNode {
 impl<'a, M: Mode> Net<'a, M> {
   #[inline(always)]
   pub fn create_node(&mut self, tag: Tag, lab: Lab) -> CreatedNode {
-    let addr = self.alloc();
+    assert_eq!(tag.width(), 2);
+    let addr = self.alloc(tag.align());
     CreatedNode {
       p0: Port::new(tag, lab, addr.clone()),
-      p1: Port::new_var(addr.clone()),
-      p2: Port::new_var(addr.other_half()),
+      p1: Port::new_var(Align2, addr),
+      p2: Port::new_var(Align2, addr.other(Align1)),
     }
   }
 
   /// Creates a wire an aux port pair.
   #[inline(always)]
   pub fn create_wire(&mut self) -> (Wire, Port) {
-    let addr = self.alloc();
-    self.half_free(addr.other_half());
-    (Wire::new(addr.clone()), Port::new_var(addr))
+    let addr = self.alloc(Align2);
+    (Wire::new(Align1, addr), Port::new_var(Align1, addr))
   }
 
   /// Creates a wire pointing to a given port; sometimes necessary to avoid
   /// deadlock.
   #[inline(always)]
   pub fn create_wire_to(&mut self, port: Port) -> Wire {
-    let addr = self.alloc();
-    self.half_free(addr.other_half());
-    let wire = Wire::new(addr);
-    self.link_port_port(port, Port::new_var(wire.addr()));
+    let addr = self.alloc(Align1);
+    let wire = Wire::new(Align1, addr);
+    self.link_port_port(port, wire.as_var());
     wire
   }
 }

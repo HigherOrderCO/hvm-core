@@ -308,7 +308,7 @@ impl Trg {
 impl<'h, M: Mode> Linker<'h, M> {
   /// Links a `Trg` to a port, delegating to the appropriate method based on the
   /// type of `a`.
-  #[inline(always)]
+  #[inline(never)]
   pub fn link_trg_port(&mut self, a: Trg, b: Port) {
     match a.is_wire() {
       true => self.link_wire_port(a.as_wire(), b),
@@ -318,7 +318,7 @@ impl<'h, M: Mode> Linker<'h, M> {
 
   /// Links two `Trg`s, delegating to the appropriate method based on the types
   /// of `a` and `b`.
-  #[inline(always)]
+  #[inline(never)]
   pub fn link_trg(&mut self, a: Trg, b: Trg) {
     match (a.is_wire(), b.is_wire()) {
       (true, true) => self.link_wire_wire(a.as_wire(), b.as_wire()),
@@ -391,7 +391,8 @@ impl RedexQueue {
 
 // Returns whether a redex does not allocate memory
 fn redex_would_shrink(a: &Port, b: &Port) -> bool {
+  // todo
   (*a == Port::ERA || *b == Port::ERA)
-    || (a.tag() == Tag::Ctr && b.tag() == Tag::Ctr && a.lab() == b.lab())
+    || (a.tag() == Tag::Ctr2 && b.tag() == Tag::Ctr2 && a.lab() == b.lab())
     || (!(a.tag() == Tag::Ref || b.tag() == Tag::Ref) && (a.tag() == Tag::Num || b.tag() == Tag::Num))
 }

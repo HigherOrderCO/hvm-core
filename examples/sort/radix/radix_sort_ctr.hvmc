@@ -16,7 +16,7 @@
 & @sum ~ (b a)
 & @sort ~ (c b)
 & @rev ~ (d c)
-& @gen ~ (#20 (#0 d))
+& @gen ~ (#22 (#0 d))
 @merge = (((a a) (@merge$C2 (@merge$C7 (b c)))) (b c))
 @merge$C0 = (* *)
 @merge$C1 = (* @merge$C0)

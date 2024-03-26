@@ -63,6 +63,7 @@ mod net;
 mod node;
 mod parallel;
 mod port;
+mod tag;
 mod wire;
 
 pub use addr::*;
@@ -74,6 +75,7 @@ pub use linker::*;
 pub use net::*;
 pub use node::*;
 pub use port::*;
+pub use tag::*;
 pub use wire::*;
 
 pub type Lab = u16;

@@ -5,6 +5,8 @@ use super::*;
 /// The type of a port is determined by its *tag*, which is stored in the bottom
 /// three bits.
 ///
+/// TODO: update
+///
 /// All tags other than [`Num`] divide the bits of the port as follows:
 /// - the top 16 bits are the *label*, accessible with [`Port::lab`]
 /// - the middle 45 bits are the non-alignment bits of the *address*, an
@@ -18,86 +20,23 @@ use super::*;
 #[must_use]
 pub struct Port(pub u64);
 
-bi_enum! {
-  #[repr(u8)]
-  #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-  pub enum Tag {
-    /// `Red` ports represent redirects, which are an implementation detail of
-    /// the atomic linking algorithm, and don't have a precise analogue in
-    /// interaction nets.
-    ///
-    /// These ports are never directly held, but rather replace the backlinks of
-    /// some var ports. They are used to resolve inter-thread conflicts, and
-    /// thus will never appear when single-threaded.
-    ///
-    /// See the documentation for the linking algorithm for more.
-    Red = 0,
-    /// A `Var` port represents an auxiliary port in the net.
-    ///
-    /// The address of this port represents the wire leaving this port,
-    /// accessible with `Port::wire`.
-    ///
-    /// The label of this port is currently unused and always 0.
-    Var = 1,
-    /// A `Ref` port represents the principal port of a nilary reference node.
-    ///
-    /// The address of this port is a pointer to the corresponding [`Def`].
-    ///
-    /// The label of this port is always equivalent to `def.labs.min_safe`, and
-    /// is used as an optimization for the ref commutation interaction.
-    ///
-    /// Eraser nodes are represented by a null-pointer `Ref`, available as the
-    /// constant [`Port::ERA`].
-    Ref = 2,
-    /// A `Num` port represents the principal port of a U60 node.
-    ///
-    /// The top 60 bits of the port are the value of this node, and are
-    /// accessible with [`Port::num`].
-    ///
-    /// The 4th bit from the bottom is currently unused in this port.
-    Num = 3,
-    /// An `Op` port represents the principal port of an Op node.
-    ///
-    /// The label of this port is the corresponding operation, which can be
-    /// accessed with [`Port::op`].
-    ///
-    /// The address of this port is the address of a two-word allocation,
-    /// storing the targets of the wires connected to the two auxiliary ports of
-    /// this node.
-    Op = 4,
-    /// A `Mat` port represents the principal port of a Mat node.
-    ///
-    /// The address of this port is the address of a two-word allocation,
-    /// storing the targets of the wires connected to the two auxiliary ports of
-    /// the node.
-    ///
-    /// The label of this port is currently unused and always 0.
-    Mat = 6,
-    /// A `Ctr` port represents the principal port of an binary interaction
-    /// combinator node.
-    ///
-    /// The label of this port is the label of the combinator; two combinators
-    /// annihilate if they have the same label, or commute otherwise.
-    ///
-    /// The address of this port is the address of a two-word allocation,
-    /// storing the targets of the wires connected to the two auxiliary ports of
-    /// the node.
-    Ctr = 7,
-  }
-}
-
 impl fmt::Debug for Port {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     write!(f, "{:016x?} ", self.0)?;
     match *self {
       Port::ERA => write!(f, "[ERA]"),
-      Port::FREE => write!(f, "[FREE]"),
+      Port::FREE_1 => write!(f, "[FREE 1]"),
+      Port::FREE_2 => write!(f, "[FREE 2]"),
+      Port::FREE_4 => write!(f, "[FREE 4]"),
+      Port::FREE_8 => write!(f, "[FREE 8]"),
       Port::GONE => write!(f, "[GONE]"),
       Port::LOCK => write!(f, "[LOCK]"),
       _ => match self.tag() {
-        Num => write!(f, "[Num {}]", self.num()),
-        Var | Red | Mat => write!(f, "[{:?} {:?}]", self.tag(), self.addr()),
-        Op | Ctr | Ref => write!(f, "[{:?} {:?} {:?}]", self.tag(), self.lab(), self.addr()),
+        Tag::Num => write!(f, "[Num {}]", self.num()),
+        Tag::Var | Tag::Red | Tag::Mat => write!(f, "[{:?} {:?}]", self.tag(), self.addr()),
+        Tag::Op | CtrN!() | AdtN!() | Tag::AdtZ | Tag::Ref => {
+          write!(f, "[{:?} {:?} {:?}]", self.tag(), self.lab(), self.addr())
+        }
       },
     }
   }
@@ -105,10 +44,7 @@ impl fmt::Debug for Port {
 
 impl Port {
   /// The principal port of an eraser node.
-  pub const ERA: Port = Port(Ref as _);
-  /// A sentinel value used to indicate free memory; see the allocator for more
-  /// details.
-  pub const FREE: Port = Port(0x8000_0000_0000_0000);
+  pub const ERA: Port = Port(Tag::Ref as _);
   /// A sentinel value used to lock a wire; see the linking algorithm for more
   /// details.
   pub const LOCK: Port = Port(0xFFFF_FFFF_FFFF_FFF0);
@@ -124,31 +60,64 @@ impl Port {
 
   /// Creates a new [`Var`] port with a given addr.
   #[inline(always)]
-  pub fn new_var(addr: Addr) -> Self {
-    Port::new(Var, 0, addr)
+  pub fn new_var(alloc_align: Align, addr: Addr) -> Self {
+    Port::new(Tag::Var, alloc_align as u16, addr)
+  }
+
+  /// Creates a new [`Red`] port with a given addr.
+  #[inline(always)]
+  pub fn new_red(alloc_align: Align, addr: Addr) -> Self {
+    Port::new(Tag::Red, alloc_align as u16, addr)
   }
 
   /// Creates a new [`Num`] port with a given 60-bit numeric value.
   #[inline(always)]
   pub const fn new_num(val: u64) -> Self {
-    Port((val << 4) | (Num as u64))
+    Port((val << 4) | (Tag::Num as u64))
   }
 
   /// Creates a new [`Ref`] port corresponding to a given definition.
   #[inline(always)]
   pub fn new_ref(def: &Def) -> Port {
-    Port::new(Ref, def.labs.min_safe, Addr(def as *const _ as _))
+    Port::new(Tag::Ref, def.labs.min_safe, Addr(def as *const _ as _))
+  }
+
+  /// TODO
+  #[inline(always)]
+  pub const fn new_adtz(variant_index: u8, variant_count: u8) -> Self {
+    Port(Tag::AdtZ as u64 | ((variant_index as u64) << 16) | ((variant_count as u64) << 8))
+  }
+
+  /// TODO
+  #[inline(always)]
+  pub fn variant_index(&self) -> u8 {
+    (self.0 >> 16) as u8
+  }
+
+  /// TODO
+  #[inline(always)]
+  pub fn variant_count(&self) -> u8 {
+    (self.0 >> 8) as u8
+  }
+
+  /// TODO
+  #[inline(always)]
+  pub fn align(&self) -> Align {
+    unsafe { Align::from_unchecked((self.0 & 0b11) as u8) }
   }
 
   /// Accesses the tag of this port; this is valid for all ports.
   #[inline(always)]
   pub fn tag(&self) -> Tag {
-    unsafe { Tag::from_unchecked((self.0 & 0x7) as u8) }
+    unsafe { Tag::from_unchecked((self.0 & ((1 << self.align().tag_bits()) - 1)) as u8) }
   }
 
+  /// Checks if this port is of the given `tag`.
   #[inline(always)]
   pub fn is(&self, tag: Tag) -> bool {
-    self.tag() == tag
+    // This could be `self.tag() == tag`, but this is more efficient when `tag`
+    // is a constant.
+    (self.0 & ((1 << tag.align().tag_bits()) - 1)) as u8 == tag as u8
   }
 
   /// Accesses the label of this port; this is valid for all non-`Num` ports.
@@ -159,12 +128,11 @@ impl Port {
 
   /// Accesses the addr of this port; this is valid for all non-`Num` ports.
   #[inline(always)]
-  pub const fn addr(&self) -> Addr {
-    Addr((self.0 & 0x0000_FFFF_FFFF_FFF8) as usize as _)
+  pub fn addr(&self) -> Addr {
+    Addr((self.0 & self.align().addr_mask()) as usize)
   }
 
-  /// Accesses the operation of this port; this is valid for [`Op1`] and [`Op2`]
-  /// ports.
+  /// Accesses the operation of this port; this is valid for [`Opr`] ports.
   #[inline(always)]
   pub fn op(&self) -> Op {
     unsafe { Op::from_unchecked(self.lab()) }
@@ -180,12 +148,12 @@ impl Port {
   /// non-sentinel [`Red`] ports.
   #[inline(always)]
   pub fn wire(&self) -> Wire {
-    Wire::new(self.addr())
+    Wire::new(self.alloc_align(), self.addr())
   }
 
   #[inline(always)]
   pub fn is_principal(&self) -> bool {
-    self.tag() >= Ref
+    self.align() != Align1
   }
 
   /// Given a principal port, returns whether this principal port may be part of
@@ -193,22 +161,47 @@ impl Port {
   /// need to be added to the redex list.
   #[inline(always)]
   pub fn is_skippable(&self) -> bool {
-    self.tag() == Num || self.tag() == Ref && self.lab() != u16::MAX
+    self.is(Tag::AdtZ) || self.is(Tag::Num) || self.is(Tag::Ref) && self.lab() != u16::MAX
   }
 
   /// Converts a [`Var`] port into a [`Red`] port with the same address.
   #[inline(always)]
   pub(super) fn redirect(&self) -> Port {
-    Port::new(Red, 0, self.addr())
+    Port(self.0 ^ (Tag::Red as u64 ^ Tag::Var as u64))
   }
 
   /// Converts a [`Red`] port into a [`Var`] port with the same address.
   #[inline(always)]
   pub(super) fn unredirect(&self) -> Port {
-    Port::new(Var, 0, self.addr())
+    self.redirect()
   }
 
   pub(super) fn is_full_node(&self) -> bool {
-    self.tag() > Num
+    match self.tag() {
+      Tag::Op | Tag::Mat | CtrN!() | AdtN!() => true,
+      Tag::Red | Tag::Var | Tag::Num | Tag::Ref | Tag::AdtZ => false,
+    }
+  }
+
+  /// TODO
+  #[inline(always)]
+  pub(super) fn alloc_align(&self) -> Align {
+    unsafe { Align::from_unchecked(self.lab() as u8) }
+  }
+
+  /// TODO
+  #[inline(always)]
+  pub(super) fn is_ctr_ish(&self) -> bool {
+    (self.0 & 0b111) > 0b100
+  }
+
+  #[inline(always)]
+  pub(crate) fn aux_port(&self, i: u8) -> Port {
+    Port::new_var(self.align(), self.addr().offset(i as usize))
+  }
+
+  #[inline(always)]
+  pub(super) fn with_addr(&self, addr: Addr) -> Port {
+    Port(self.0 & !self.align().addr_mask() | addr.0 as u64)
   }
 }

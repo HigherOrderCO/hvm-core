@@ -186,7 +186,7 @@ impl<'a, M: Mode> Net<'a, M> {
 
     let def = port.addr().def();
 
-    if trg.tag() == Ctr && !def.labs.has(trg.lab()) {
+    if trg.is_ctr_ish() && !def.labs.has(trg.lab()) {
       return self.comm02(port, trg);
     }
 
@@ -225,12 +225,12 @@ impl AsHostedDef for InterpretedDef {
     struct Trgs(*mut Trg);
 
     impl Trgs {
-      #[inline(always)]
+      #[inline(never)]
       fn get_trg(&self, i: TrgId) -> Trg {
         unsafe { (*self.0.byte_offset(i.byte_offset as _)).clone() }
       }
 
-      #[inline(always)]
+      #[inline(never)]
       fn set_trg(&mut self, i: TrgId, trg: Trg) {
         unsafe { *self.0.byte_offset(i.byte_offset as _) = trg }
       }
@@ -248,10 +248,24 @@ impl AsHostedDef for InterpretedDef {
             }
             net.link_trg_port(trgs.get_trg(trg), port.clone())
           }
-          Instruction::Ctr { lab, trg, lft, rgt } => {
-            let (l, r) = net.do_ctr(lab, trgs.get_trg(trg));
+          Instruction::Ctr2 { lab, trg, lft, rgt } => {
+            let (l, r) = net.do_ctr2(lab, trgs.get_trg(trg));
             trgs.set_trg(lft, l);
             trgs.set_trg(rgt, r);
+          }
+          Instruction::CtrN { lab, trg, ref ports } => {
+            for (i, t) in net.do_ctrn(lab, trgs.get_trg(trg), ports.len() as u8).into_iter().enumerate() {
+              trgs.set_trg(ports[i], t);
+            }
+          }
+          Instruction::AdtN { lab, trg, variant_index, variant_count, ref fields } => {
+            for (i, t) in net
+              .do_adtn(lab, trgs.get_trg(trg), variant_index, variant_count, fields.len() as u8)
+              .into_iter()
+              .enumerate()
+            {
+              trgs.set_trg(fields[i], t);
+            }
           }
           Instruction::Op { op, trg, rhs, out } => {
             let (r, o) = net.do_op(op, trgs.get_trg(trg));
@@ -262,10 +276,11 @@ impl AsHostedDef for InterpretedDef {
             let o = net.do_op_num(op, trgs.get_trg(trg), lhs);
             trgs.set_trg(out, o);
           }
-          Instruction::Mat { trg, lft, rgt } => {
-            let (l, r) = net.do_mat(trgs.get_trg(trg));
-            trgs.set_trg(lft, l);
-            trgs.set_trg(rgt, r);
+          Instruction::Mat { trg, zero, succ, out } => {
+            let (z, s, o) = net.do_mat(trgs.get_trg(trg));
+            trgs.set_trg(zero, z);
+            trgs.set_trg(succ, s);
+            trgs.set_trg(out, o);
           }
           Instruction::Wires { av, aw, bv, bw } => {
             let (avt, awt, bvt, bwt) = net.do_wires();

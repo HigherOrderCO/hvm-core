@@ -1,0 +1,21 @@
+---
+source: tests/tests.rs
+assertion_line: 111
+expression: output
+input_file: tests/programs/stress_tests/all_tree.hvmc
+---
+(a (* a))
+pre-reduce:
+RWTS   :      31_457_294
+- ANNI :      13_631_494
+- COMM :       5_242_875
+- ERAS :       7_340_027
+- DREF :       3_145_747
+- OPER :       2_097_151
+run:
+RWTS   :               0
+- ANNI :               0
+- COMM :               0
+- ERAS :               0
+- DREF :               0
+- OPER :               0

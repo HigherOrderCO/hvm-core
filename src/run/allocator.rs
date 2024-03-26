@@ -1,17 +1,8 @@
 use super::*;
 
-/// The memory behind a two-word allocation.
-///
-/// This must be aligned to 16 bytes so that the left word's address always ends
-/// with `0b0000` and the right word's address always ends with `0b1000`.
-#[repr(C)]
-#[repr(align(16))]
-#[derive(Default)]
-pub(super) struct Node(pub AtomicU64, pub AtomicU64);
-
 /// The memory buffer backing a [`Net`].
-#[repr(align(16))]
-pub struct Heap(pub(super) [Node]);
+#[repr(align(64))]
+pub struct Heap(pub(super) [AtomicU64]);
 
 impl Heap {
   /// Allocates a new heap with the given size in bytes, defaulting to the
@@ -36,16 +27,15 @@ impl Heap {
   /// Allocates a new heap with exactly the given size in words.
   #[inline]
   pub fn new_exact(words: usize) -> Option<Box<Self>> {
-    let nodes = words / 2;
-    if nodes == 0 {
+    if words == 0 {
       return None;
     }
     unsafe {
-      let ptr = alloc::alloc(Layout::array::<Node>(nodes).unwrap()) as *mut Node;
+      let ptr = alloc::alloc(Layout::array::<AtomicU64>(words).unwrap().align_to(64).unwrap()) as *mut AtomicU64;
       if ptr.is_null() {
         return None;
       }
-      Some(Box::from_raw(core::ptr::slice_from_raw_parts_mut(ptr, nodes) as *mut _))
+      Some(Box::from_raw(core::ptr::slice_from_raw_parts_mut(ptr, words) as *mut _))
     }
   }
 }
@@ -55,66 +45,105 @@ pub struct Allocator<'h> {
   pub(super) tracer: Tracer,
   pub(super) heap: &'h Heap,
   pub(super) next: usize,
-  pub(super) head: Addr,
+  pub(super) heads: [Addr; 4],
 }
 
 deref!({<'h>} Allocator<'h> => self.tracer: Tracer);
 
+impl Align {
+  #[inline(always)]
+  const fn free(self) -> u64 {
+    (1 << self as u64) << 60
+  }
+}
+
+/// Sentinel values used to indicate free memory.
+impl Port {
+  pub(super) const FREE_1: Port = Port(Align1.free());
+  pub(super) const FREE_2: Port = Port(Align2.free());
+  pub(super) const FREE_4: Port = Port(Align4.free());
+  pub(super) const FREE_8: Port = Port(Align8.free());
+}
+
 impl<'h> Allocator<'h> {
   pub fn new(heap: &'h Heap) -> Self {
-    Allocator { tracer: Tracer::default(), heap, next: 0, head: Addr::NULL }
+    Allocator { tracer: Tracer::default(), heap, next: 0, heads: [Addr::NULL; 4] }
   }
 
-  /// Frees one word of a two-word allocation.
+  fn head(&mut self, align: Align) -> &mut Addr {
+    unsafe { self.heads.get_unchecked_mut(align as usize) }
+  }
+
+  fn push_addr(head: &mut Addr, addr: Addr) {
+    addr.val().store(head.0 as u64, Relaxed);
+    *head = addr;
+  }
+
+  /// Frees one word of an allocation of size `alloc_align`.
   #[inline(always)]
-  pub fn half_free(&mut self, addr: Addr) {
-    trace!(self.tracer, addr);
-    const FREE: u64 = Port::FREE.0;
+  pub fn free_word(&mut self, mut addr: Addr, alloc_align: Align) {
     if cfg!(feature = "_fuzz") {
       if cfg!(not(feature = "_fuzz_no_free")) {
-        assert_ne!(addr.val().swap(FREE, Relaxed), FREE, "double free");
+        let free = Port::FREE_1.0;
+        assert_ne!(addr.val().swap(free, Relaxed), free, "double free");
       }
-    } else {
-      addr.val().store(FREE, Relaxed);
-      if addr.other_half().val().load(Relaxed) == FREE {
-        trace!(self.tracer, "other free");
-        let addr = addr.left_half();
-        if addr.val().compare_exchange(FREE, self.head.0 as u64, Relaxed, Relaxed).is_ok() {
-          let old_head = &self.head;
-          let new_head = addr;
-          trace!(self.tracer, "appended", old_head, new_head);
-          self.head = new_head;
-        } else {
-          trace!(self.tracer, "too slow");
-        };
+      return;
+    }
+    let mut align = Align1;
+    if align == alloc_align {
+      trace!(self.tracer, "free");
+      return Self::push_addr(self.head(align), addr);
+    }
+    addr.val().store(align.free(), Relaxed);
+    while align != alloc_align {
+      if addr.other(align).val().load(Relaxed) != align.free() {
+        return;
       }
+      trace!(self.tracer, "other free");
+      let next_align = unsafe { align.next().unwrap_unchecked() };
+      addr = addr.floor(next_align);
+      let next_value = if next_align == alloc_align { self.head(alloc_align).0 as u64 } else { next_align.free() };
+      if addr.val().compare_exchange(align.free(), next_value, Relaxed, Relaxed).is_err() {
+        return trace!(self.tracer, "too slow");
+      }
+      trace!(self.tracer, "success");
+      if next_align == alloc_align {
+        let old_head = next_value;
+        let new_head = addr;
+        trace!(self.tracer, "appended", old_head, new_head);
+        return *self.head(align) = addr;
+      }
+      align = next_align;
     }
   }
 
-  /// Allocates a two-word node.
+  /// Allocates a node, with a size specified by `align`.
   #[inline(never)]
-  pub fn alloc(&mut self) -> Addr {
-    trace!(self.tracer, self.head);
-    let addr = if self.head != Addr::NULL {
-      let addr = self.head.clone();
-      let next = Addr(self.head.val().load(Relaxed) as usize);
-      trace!(self.tracer, next);
-      self.head = next;
+  pub fn alloc(&mut self, align: Align) -> Addr {
+    let head = self.head(align);
+    let addr = if *head != Addr::NULL {
+      let addr = *head;
+      let next = Addr(head.val().load(Relaxed) as usize);
+      *head = next;
       addr
     } else {
-      let index = self.next;
-      self.next += 1;
-      Addr(&self.heap.0.get(index).expect("OOM").0 as *const _ as _)
+      let w = align.width() as usize;
+      let x = w - 1;
+      let index = (self.next + x) & !x;
+      self.next = index + w;
+      trace!(self, index);
+      Addr(self.heap.0.get(index).expect("OOM") as *const AtomicU64 as usize)
     };
-    trace!(self.tracer, addr, self.head);
-    addr.val().store(Port::LOCK.0, Relaxed);
-    addr.other_half().val().store(Port::LOCK.0, Relaxed);
+    trace!(self, align, addr);
+    for i in 0 .. align.width() {
+      addr.offset(i as usize).val().store(Port::LOCK.0, Relaxed);
+    }
     addr
   }
 
   #[inline(always)]
   pub(crate) fn free_wire(&mut self, wire: Wire) {
-    self.half_free(wire.addr());
+    self.free_word(wire.addr(), wire.alloc_align());
   }
 
   /// If `trg` is a wire, frees the backing memory.

@@ -1,0 +1,28 @@
+data Nat = (S pred) | Z
+
+add = λx λy
+  match x {
+    Z: y
+    S: (S (add x.pred y))
+  }
+
+pow = λx
+  match x {
+    Z: (S Z)
+    S: (add (pow x.pred) (pow x.pred))
+  }
+
+era = λx
+  match x {
+    Z: Z
+    S: (era x.pred)
+  }
+
+main = (era (pow
+  (S (S
+  (S (S (S (S
+  (S (S (S (S
+  (S (S (S (S
+  (S (S (S (S
+  (S (S (S (S
+  Z))))))))))))))))))))))))

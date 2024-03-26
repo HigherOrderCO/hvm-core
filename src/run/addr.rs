@@ -35,19 +35,22 @@ impl Addr {
     unsafe { &*(self.0 as *const _) }
   }
 
-  const HALF_MASK: usize = 0b1000;
-
-  /// Given an address to one word of a two-word allocation, returns the address
-  /// of the first word of that allocation.
+  /// Rounds this address down to be aligned to `align`.
   #[inline(always)]
-  pub(super) fn left_half(&self) -> Self {
-    Addr(self.0 & !Addr::HALF_MASK)
+  pub(super) fn floor(&self, align: Align) -> Self {
+    Addr(self.0 & (usize::MAX << align.tag_bits()))
   }
 
-  /// Given an address to one word of a two-word allocation, returns the address
-  /// of the other word of that allocation.
+  /// Returns the other address of alignment `align` within alignment
+  /// `align.next()`.
   #[inline(always)]
-  pub fn other_half(&self) -> Self {
-    Addr(self.0 ^ Addr::HALF_MASK)
+  pub(super) fn other(&self, align: Align) -> Self {
+    Addr(self.0 ^ (1 << align.tag_bits()))
+  }
+
+  /// Offsets the address by a specified number of words.
+  #[inline(always)]
+  pub(super) fn offset(&self, words: usize) -> Self {
+    Addr(self.0 + (words << 3))
   }
 }
