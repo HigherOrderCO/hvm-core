@@ -1,3 +1,4 @@
+
 # HVM-Core: a parallel Interaction Combinator evaluator
 
 HVM-Core is a parallel evaluator for extended [Symmetric Interaction Combinators](https://www-lipn.univ-paris13.fr/~mazza/papers/CombSem-MSCS.pdf).
@@ -8,7 +9,7 @@ optimal evaluation semantics and concurrent model of computation make it a great
 compile target for high-level languages seeking massive parallelism.
 
 HVM-Core will be used as the compile target for
-[HVM](https://github.com/higherorderco/hvm) on its upcoming update.
+[HVM](https://github.com/higherorderco/hvm1) on its upcoming update, available at [HVM-lang](https://github.com/higherorderco/hvm-lang)
 
 ## Usage
 
@@ -84,12 +85,12 @@ HVM-Core's textual syntax represents interaction combinators via an AST:
   <REF> ::= "@" <name>
   <U60> ::= "#" <value>
   <OP2> ::= "<" <op> " " <TERM> " " <TERM> ">"
-  <MAT> ::= "?" "<" <TERM> " " <TERM> ">"
+  <MAT> ::= "?" "<" <TERM> " " <TERM> " " <TERM> ">"
   <VAR> ::= <name>
 
 <NET> ::=
   <ROOT> ::= <TERM>
-  <REDEX> ::= "&" <TERM> "~" <TERM> <NET>
+  <REDEX> ::= <NET> "&" <TERM> "~" <TERM>
 
 <BOOK> ::= 
   <DEF> ::= "@" <name> "=" <NET> <BOOK>
@@ -119,7 +120,7 @@ integers, numeric operations and numeric pattern-matching.
 
 - `U60`: an unboxed 60-bit unsigned integer.
 
-- `OP2`: a binary operation on u60 operands.
+- `OP`: a binary operation on u60 operands.
 
 - `MAT`: a pattern-matching operator on u60 values.
 
@@ -155,6 +156,231 @@ as a `*`. The wires from an aux port to a main port are denoted by the tree
 hierarchy, the wires between aux ports are denoted by named variables, and the
 single wire between main ports is denoted by the `& A ~ B` syntax. Note this
 always represents an active pair (or redex)!
+
+## Node types and interactions
+
+The available interactions are the same described on the reference paper, namely
+annihilation and commutation rules, plus a few additional interactions,
+including primitive numeric operations, conditionals, and dereference.
+
+### Ctr and Era
+
+`Ctr` and `Era` are the two basic node types that are present in the original interaction combinators paper. However, unlike in regular Interaction Combinators, `hvm-core` has up to 65535 distinct 2-ary combinators instead of just 2. This is an _extension_ to "pure" IC that is useful to implement many common patterns, such as duplications and tuples. `hvm-core` would have the same power if it had only 2 combinator labels; however; programs written in it would have decreased performance.
+```
+()---()
+~~~~~~~ ERA-ERA
+nothing
+```
+
+```
+A1 --|\
+     |a|-- ()
+A2 --|/
+~~~~~~~~~~~~~ CTR-ERA
+A1 ------- ()
+A2 ------- ()
+```
+
+```
+A1 --|\     /|-- B2
+     |a|---|b|   
+A2 --|/     \|-- B1
+~~~~~~~~~~~~~~~~~~~ CTR-CTR (if a ~~ b)
+A1 -----, ,----- B2
+         X
+A2 -----' '----- B1
+```
+
+```
+A1 --|\         /|-- B2
+     |a|-------|b|   
+A2 --|/         \|-- B1
+~~~~~~~~~~~~~~~~~~~~~~~ CTR-CTR (if a !~ b)
+      /|-------|\
+A1 --|b|       |a|-- B2
+      \|--, ,--|/
+           X
+      /|--' '--|\
+A2 --|b|       |a|-- B1
+      \|-------|/
+```
+### Num, Op, and Mat
+
+`hvm-core` allows programs to employ the host architecture's native number operators. `hvm-core` numbers are 60 bits long. 
+
+- `Num` is a 60-bit unsigned integer type. 
+-  `Op` is a binary operation carried out on the integer in its principal port.
+- `Mat` is a match operator that can pattern-match on numbers, which allows branching when working with native integers.
+
+#### Op
+
+An `Op` node is a 2-ary node that carries out an operation on the numbers between the numbers in its principal port and its first auxiliary port.
+
+```
+      /-----|1--- #Y
+#X --|Op[op]|
+      \-----|2--- out
+~~~~~~~~~~~~~~~~~~~~~~~ OP-NUM (A)
+#op(X, Y) ---- out
+
+      /-----|1--- other // (if `other` is not a Num)
+#X --|Op[op]|
+      \-----|2--- out
+~~~~~~~~~~~~~~~~~~~~~~~ OP-NUM (B)
+         /------|1--- #X
+other --|Op[op']|              // Operator inside Op node gets flipped
+         \------|2--- out
+```
+
+The Op node commutes with other 
+
+There are 16 supported operations. (plus their swapped versions, which aren't shown here)
+
+sym | name
+--- | ---------
+`+` | addition
+`-` | subtraction
+`*` | multiplication
+`/` | division
+`%` | modulus
+`==`| equal-to
+`!=`| not-equal-to
+`<` | less-than
+`>` | greater-than
+`<=`| less-than-or-equal
+`>=`| greater-than-or-equal
+`&` | bitwise-and
+`\|`| bitwise-or
+`^` | bitwise-xor
+`~` | bitwise-not
+`<<`| left-shift
+`>>`| right-shift
+
+
+### Mat
+
+Mat is a 3-ary pattern matching nodes with three auxiliary ports, `zero`, `succ`, and `out`
+
+```
+zero --,
+succ --(?)-- #X
+ out --' 
+~~~~~~~~~~~~~~~~~~ MAT-NUM (#X > 0)
+        /|-- out
+succ --| |
+        \|-- #(X-1)
+       
+zero -- ()
+
+
+zero --,
+succ --(?)-- #X
+ out --' 
+~~~~~~~~~~~~~~~~~~ MAT-NUM (#X > 0)
+zero -- out
+succ -- ()
+```
+Since HVM already provides plenty of solutions for branching (global references,
+lambda encoded booleans and pattern-matching, etc.), the pattern-match operation
+is only necessary to read bits from numbers: otherwise, numbers would be "black
+boxes" that can't interact with the rest of the program. 
+
+
+Note that some interactions like NUM-ERA are omitted, but should logically
+follow from the ones described above.
+### REF nodes
+
+REF nodes stand for "reference" nodes. However, they are much more powerful than that.
+
+Most REF nodes refer to closed nets. Interaction with these will "expand" the closed net, which is stored inside the REF.
+
+However, REF nodes allow a library that imports `hvm-core` to define arbitrary interactions, which might interact with the environment and call external functions. 
+
+## Memory Layout
+
+The memory layout is optimized for efficiency. Conceptually, it equals:
+
+```rust
+// A pointer is a 64-bit word
+type Ptr = u64;
+
+// A node stores its two aux ports
+struct Node {
+  p1: Ptr, // this node's fst aux port
+  p2: Ptr, // this node's snd aux port 
+}
+
+// A redex links two main ports
+struct Redex {
+  a: Ptr, // main port of node A
+  b: Ptr, // main port of node B
+}
+
+// A closed net
+struct Net {
+  root: Ptr,       // a free wire
+  redexes: Vec<Redex> // a vector of redexes
+  heap: Vec<Node>  // a vector of nodes
+}
+```
+
+As you can see, the memory layout resembles the textual syntax, with nets being
+represented as a vector of trees, with the 'redex' buffer storing the tree roots
+(as active pairs), and the 'nodes' buffer storing all the nodes. Each node has
+two 64-bit pointers and, thus, uses exactly 128 bits. 
+
+[comment]: <> (/* cSpell:disable */)
+``` 
+                                                             2-0
+                                                              v 
+[63----------48][47----------------------------------------3][-]
+LLLLLLLLLLLLLLLLAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAATTT
+[----Label-----][------------------Address------------------][-]
+                                                              ^
+                                                             Tag
+```
+[comment]: <> (/* cSpell:enable */)
+
+Pointers include a 4-bit tag, a 16-bit label (used for DUP labels, OP operators) and a 48-bit aligned addr,
+which allows addressing a 281 TB space per instance. There are 7 pointer types:
+```rust
+  pub enum Tag {
+    Red = 0,
+    Var = 1,
+    Ref = 2,
+    Num = 3,
+    Op = 4,
+    /* Coming soon :) */ = 5,
+    Mat = 6,
+    Ctr = 7,
+  }
+```
+
+This memory-efficient format allows for a fast implementation in many
+situations; for example, an interaction combinator annihilation can be performed
+with just 2 atomic CAS.
+
+Note that LAM, TUP and DUP nodes are identical: they are interaction combinator
+nodes, and they annihilate/commute based on their labels being identical. The
+distinction is made for better printing, but isn't used internally.
+
+We also provide unboxed 60-bit unsigned integers, which allows HVMC to store raw
+data with minimal loss. For example, to store a raw 3.75 KB buffer, one could
+use a perfect binary tree of CON nodes with a depth of 8, as follows:
+
+```javascript
+@buff = (((((((((X0 X1) (X2 X3)) ((X4 X5) (X6 X7))) ...)))))))
+```
+
+This would use a total of 511 nodes, which takes a space of almost exactly 8 KB
+on HVMC. As such, while buffers are not part of the spec, we can store raw data
+with a ~46% efficiency using interaction-net-based trees. This structure isn't
+as compact as arrays, but it allows us access and transform data in parallel,
+which is a great tradeoff in practice.
+
+## Lazy mode
+
+`hvm-core` features a lazy mode switch, which can be toggled with `-l`. It is slower, but it only reduces redexes that are reachable with a walk from the root. This prevents disconnected nets from growing exponentially.
 
 ## CPU Evaluator
 
@@ -244,230 +470,6 @@ OUTPUT:
     A2 <--------------> B2
 ```
 
-
-## Interactions
-
-The available interactions are the same described on the reference paper, namely
-annihilation and commutation rules, plus a few additional interactions,
-including primitive numeric operations, conditionals, and dereference. The core
-interactions are:
-
-```
-()---()
-~~~~~~~ ERA-ERA
-nothing
-```
-
-```
-A1 --|\
-     |a|-- ()
-A2 --|/
-~~~~~~~~~~~~~ CTR-ERA
-A1 ------- ()
-A2 ------- ()
-```
-
-```
-A1 --|\     /|-- B2
-     |a|---|b|   
-A2 --|/     \|-- B1
-~~~~~~~~~~~~~~~~~~~ CTR-CTR (if a ~~ b)
-A1 -----, ,----- B2
-         X
-A2 -----' '----- B1
-```
-
-```
-A1 --|\         /|-- B2
-     |a|-------|b|   
-A2 --|/         \|-- B1
-~~~~~~~~~~~~~~~~~~~~~~~ CTR-CTR (if a !~ b)
-      /|-------|\
-A1 --|b|       |a|-- B2
-      \|--, ,--|/
-           X
-      /|--' '--|\
-A2 --|b|       |a|-- B1
-      \|-------|/
-```
-
-The dereference interactions happen when a @REF node interacts with another
-node. When that node is a constructor, the dereference will be unrolled
-efficiently. This makes HVM practical, because, without it, top-level
-definitions would need to be implemented with DUP nodes. This would cause
-considerable overhead when trying to implement functions, due to DUP nodes
-incremental copying nature. When the other node is anything else, that implies
-two closed nets got disconnected from the main graph, so both nodes are
-collected, allowing recursive functions to halt without infinite expansions.
-
-```
-() -- @REF
-~~~~~~~~~~ ERA-REF
-nothing
-```
-
-```
-A1 --|\
-     | |-- @REF
-A2 --|/
-~~~~~~~~~~~~~~~~ CTR-REF
-A1 --|\
-     | |-- {val}
-A2 --|/
-```
-
-Since Interaction Combinator nodes only have 1 active port, which is a property
-that is essential for key computational characteristics such as strong
-confluence, we can't have a binary numeric operation node. Instead, we split
-numeric operations in two nodes: OP2, which processes the first operand and
-returns an OP1 node, which then processes the second operand, performs the
-computation, and connects the result to the return wire.
-
-```
-A1 --,
-     [}-- #X
-A2 --' 
-~~~~~~~~~~~~~~ OP2-NUM
-A2 --[#X}-- A1
-```
-
-```
-A1 --[#X}-- #Y
-~~~~~~~~~~~~~~ OP1-NUM
-A1 -- #Z
-```
-
-Note that the OP2 operator doesn't store the operation type. Instead, it is
-stored on 4 unused bits of the left operand. As such, an additional operation
-called "load-op-type" is used to load the next operation on the left operand.
-See the `/examples` directory for more info. Below is a table with all available
-operations:
-
-sym | name
---- | ---------
-`+` | addition
-`-` | subtraction
-`*` | multiplication
-`/` | division
-`%` | modulus
-`==`| equal-to
-`!=`| not-equal-to
-`<` | less-than
-`>` | greater-than
-`<=`| less-than-or-equal
-`>=`| greater-than-or-equal
-`&` | bitwise-and
-`\|`| bitwise-or
-`^` | bitwise-xor
-`~` | bitwise-not
-`<<`| left-shift
-`>>`| right-shift
-
-Since HVM already provides plenty of solutions for branching (global references,
-lambda encoded booleans and pattern-matching, etc.), the pattern-match operation
-is only necessary to read bits from numbers: otherwise, numbers would be "black
-boxes" that can't interact with the rest of the program. The way it works is
-simple: it receives a number, two branches (case-zero and case-succ, stored in a
-CON node) and a return wire. If the number is 0, it erases the case-succ branch
-and returns the case-zero branch. Otherwise, it erases the case-zero branch and
-returns the case-succ branch applied to the predecessor of the number.
-
-```
-A1 --,
-     (?)-- #X
-A2 --' 
-~~~~~~~~~~~~~~~~~~ MAT-NUM (#X > 0)
-           /|-- A2
-      /|--| |
-A1 --| |   \|-- #(X-1)
-      \|-- ()
-```
-
-```
-A1 --,
-     (?)-- #X
-A2 --' 
-~~~~~~~~~~~~~~~~~~ MAT-NUM (#X == 0)
-      /|-- ()
-A1 --| |   
-      \|-- A2
-```
-
-Note that some interactions like NUM-ERA are omitted, but should logically
-follow from the ones described above.
-
-## Memory Layout
-
-The memory layout is optimized for efficiency. Conceptually, it equals:
-
-```rust
-// A pointer is a 64-bit word
-type Ptr = u64;
-
-// A node stores its two aux ports
-struct Node {
-  p1: Ptr, // this node's fst aux port
-  p2: Ptr, // this node's snd aux port 
-}
-
-// A redex links two main ports
-struct Redex {
-  a: Ptr, // main port of node A
-  b: Ptr, // main port of node B
-}
-
-// A closed net
-struct Net {
-  root: Ptr,       // a free wire
-  redexes: Vec<Redex> // a vector of redexes
-  heap: Vec<Node>  // a vector of nodes
-}
-```
-
-As you can see, the memory layout resembles the textual syntax, with nets being
-represented as a vector of trees, with the 'redex' buffer storing the tree roots
-(as active pairs), and the 'nodes' buffer storing all the nodes. Each node has
-two 32-bit pointers and, thus, uses exactly 64 bits. Pointers include a 4-bit
-tag, a 28-bit label (used for DUP colors, OP2 operators) and a 32-bit addr,
-which allows addressing a 2 GB space per instance. There are 12 pointer types:
-
-```rust
-VR1: Tag = 0x0; // Variable to aux port 1
-VR2: Tag = 0x1; // Variable to aux port 2
-RD1: Tag = 0x2; // Redirect to aux port 1
-RD2: Tag = 0x3; // Redirect to aux port 2
-REF: Tag = 0x4; // Lazy closed net
-ERA: Tag = 0x5; // Unboxed eraser
-NUM: Tag = 0x6; // Unboxed number
-OP2: Tag = 0x7; // Binary numeric operation
-OP1: Tag = 0x8; // Unary numeric operation
-MAT: Tag = 0x9; // Numeric pattern-matching
-LAM: Tag = 0xA; // Main port of lam node
-TUP: Tag = 0xB; // Main port of tup node
-DUP: Tag = 0xC; // Main port of dup node
-```
-
-This memory-efficient format allows for a fast implementation in many
-situations; for example, an interaction combinator annihilation can be performed
-with just 2 atomic CAS.
-
-Note that LAM, TUP and DUP nodes are identical: they are interaction combinator
-nodes, and they annihilate/commute based on their labels being identical. The
-distinction is made for better printing, but isn't used internally.
-
-We also provide unboxed 60-bit unsigned integers, which allows HVMC to store raw
-data with minimal loss. For example, to store a raw 3.75 KB buffer, one could
-use a perfect binary tree of CON nodes with a depth of 8, as follows:
-
-```javascript
-@buff = (((((((((X0 X1) (X2 X3)) ((X4 X5) (X6 X7))) ...)))))))
-```
-
-This would use a total of 511 nodes, which takes a space of almost exactly 8 KB
-on HVMC. As such, while buffers are not part of the spec, we can store raw data
-with a ~46% efficiency using interaction-net-based trees. This structure isn't
-as compact as arrays, but it allows us access and transform data in parallel,
-which is a great tradeoff in practice.
 
 ## Lock-free Algorithm
 
